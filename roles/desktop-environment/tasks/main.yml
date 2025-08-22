@@ -1,0 +1,26 @@
+- name: Install KDE Plasma desktop
+  apt:
+    name:
+      - kde-plasma-desktop
+    state: present
+    update_cache: yes
+
+- name: Set multi-user.target as default (prevent graphical.target from being default)
+  file:
+    src: /lib/systemd/system/multi-user.target
+    dest: /etc/systemd/system/default.target
+    state: link
+    force: yes
+
+- name: Deploy graphical target toggle script
+  copy:
+    dest: /usr/local/bin/toggle-desktop
+    mode: '0755'
+    content: |
+      #!/bin/bash
+      # Toggle between graphical and multi-user targets
+      if systemctl is-active graphical.target; then
+        systemctl isolate multi-user.target
+      else
+        systemctl isolate graphical.target
+      fi

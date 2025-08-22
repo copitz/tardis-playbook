@@ -1,0 +1,31 @@
+- name: Install UFW firewall
+  apt:
+    name: ufw
+    state: present
+
+- name: Allow SSH
+  ufw:
+    rule: allow
+    name: OpenSSH
+
+- name: Enable UFW
+  ufw:
+    state: enabled
+
+- name: Ensure system is updated
+  apt:
+    upgrade: dist
+    update_cache: yes
+
+- name: Harden SSH config
+  lineinfile:
+    path: /etc/ssh/sshd_config
+    regexp: '^#?PermitRootLogin'
+    line: 'PermitRootLogin no'
+    state: present
+  notify: Restart SSH
+
+- name: Restart SSH
+  service:
+    name: ssh
+    state: restarted
