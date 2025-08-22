@@ -29,3 +29,22 @@
   service:
     name: ssh
     state: restarted
+
+- name: Install sudo
+  apt:
+    name: sudo
+    state: present
+
+- name: Ensure sudoers users are present
+  user:
+    name: "{{ item }}"
+    state: present
+  loop: "{{ sudoers }}"
+
+- name: Add sudoers users to sudoers file
+  copy:
+    dest: "/etc/sudoers.d/{{ item }}"
+    content: "{{ item }} ALL=(ALL) NOPASSWD:ALL"
+    mode: '0440'
+    validate: '/usr/sbin/visudo -cf %s'
+  loop: "{{ sudoers }}"
