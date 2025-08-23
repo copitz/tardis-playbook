@@ -12,15 +12,21 @@
     state: link
     force: yes
 
-- name: Deploy graphical target toggle script
+- name: Deploy Desktop Environment start script
   copy:
-    dest: /usr/local/bin/toggle-desktop
+    dest: /usr/local/bin/desktop-on
     mode: '0755'
     content: |
+      startplasma-wayland
+
+- name: Deploy Desktop Environment stop script
+  copy:
+    dest: /usr/local/bin/desktop-off
+    mode: '0755'
+    content: |
+      loginctl terminate-user $USER
+
       #!/bin/bash
-      # Toggle between graphical and multi-user targets
-      if systemctl is-active graphical.target; then
-        systemctl isolate multi-user.target
-      else
-        systemctl isolate graphical.target
-      fi
+      # This frees the RAM caches previously claimed by DE, which should be reclaimable though - so just for monitoring purposes
+      # Not shure about possible site effects, when other services (e.g. docker) should remain running
+      # sudo sh -c "echo 3 > /proc/sys/vm/drop_caches"

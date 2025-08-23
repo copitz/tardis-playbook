@@ -1,12 +1,14 @@
 ---
 - hosts: all
   become: yes
+  become_method: su
   vars:
     sudoers:
       - copitz
+    open_ports: ['22', '443', '137', '138', '139', '445']
   roles:
-    - docker
-    - nvidia-container-toolkit
-    - kde-plasma
-    - acpi-powerbutton
+#    - docker
+#    - nvidia-container-toolkit
+    - desktop-environment
+#    - acpi-powerbutton
     - basic-security

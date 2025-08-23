@@ -14,4 +14,4 @@ if ! python -c "import ansible" &>/dev/null; then
   pip install ansible
 fi
 
-ansible-playbook site.yml -i inventory
+ansible-playbook site.yml -i inventory --ask-become-pass

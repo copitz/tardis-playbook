@@ -3,10 +3,11 @@
     name: ufw
     state: present
 
-- name: Allow SSH
+- name: Open ports
   ufw:
     rule: allow
-    name: OpenSSH
+    port: "{{ item }}"
+  loop: "{{ open_ports }}"
 
 - name: Enable UFW
   ufw:
@@ -17,18 +18,18 @@
     upgrade: dist
     update_cache: yes
 
-- name: Harden SSH config
-  lineinfile:
-    path: /etc/ssh/sshd_config
-    regexp: '^#?PermitRootLogin'
-    line: 'PermitRootLogin no'
-    state: present
-  notify: Restart SSH
+#- name: Harden SSH config
+#  lineinfile:
+#    path: /etc/ssh/sshd_config
+#    regexp: '^#?PermitRootLogin'
+#    line: 'PermitRootLogin no'
+#    state: present
+#  notify: Restart SSH
 
-- name: Restart SSH
-  service:
-    name: ssh
-    state: restarted
+#- name: Restart SSH
+#  service:
+#    name: ssh
+#    state: restarted
 
 - name: Install sudo
   apt:
@@ -44,7 +45,7 @@
 - name: Add sudoers users to sudoers file
   copy:
     dest: "/etc/sudoers.d/{{ item }}"
-    content: "{{ item }} ALL=(ALL) NOPASSWD:ALL"
+    content: "{{ item }} ALL=(ALL) ALL"
     mode: '0440'
     validate: '/usr/sbin/visudo -cf %s'
   loop: "{{ sudoers }}"
