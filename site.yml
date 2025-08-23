@@ -3,6 +3,8 @@
   become: yes
   become_method: su
   vars:
+    desktop_users:
+      - copitz
     sudoers:
       - copitz
     open_ports: ['22', '443', '137', '138', '139', '445']

@@ -12,16 +12,40 @@
     state: link
     force: yes
 
+- name: Write desktop users config
+  copy:
+    dest: "{{ desktop_users_config_file }}"
+    content: "{{ desktop_users | join('\n') }}"
+    owner: root
+    group: root
+    mode: '0644'
+
 - name: Deploy Desktop Environment start script
   copy:
     dest: /usr/local/bin/desktop-on
+    owner: root
+    group: root
     mode: '0755'
     content: |
+      CONFIG_FILE="{{ desktop_users_config_file }}"
+
+      if [ ! -f "$CONFIG_FILE" ]; then
+        echo "Could not find $CONFIG_FILE"
+        exit 1
+      fi
+
+      if ! grep -qx "$USER" "$CONFIG_FILE"; then
+        echo "User $USER is not allowed to start desktop (missing in $CONFIG_FILE)"
+        exit 1
+      fi
+
       startplasma-wayland
 
 - name: Deploy Desktop Environment stop script
   copy:
     dest: /usr/local/bin/desktop-off
+    owner: root
+    group: root
     mode: '0755'
     content: |
       loginctl terminate-user $USER
