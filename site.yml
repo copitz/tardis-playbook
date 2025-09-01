@@ -9,8 +9,9 @@
       - copitz
     open_ports: ['22', '443', '137', '138', '139', '445']
   roles:
+    - desktop-environment
+    - basic-security
+    - acpi-powerbutton
+    - zfs-import
 #    - docker
 #    - nvidia-container-toolkit
-    - desktop-environment
-#    - acpi-powerbutton
-    - basic-security

@@ -1,0 +1,23 @@
+- name: Ensure ZFS packages are installed
+  apt:
+    name:
+      - zfsutils-linux
+    state: present
+    update_cache: yes
+
+- name: Import ZFS pool if available
+  command: zpool import -a
+  register: zpool_import
+  changed_when: "'no pools available' not in zpool_import.stderr"
+  failed_when: false
+
+- name: Enable ZFS services so pool auto-imports at boot
+  systemd:
+    name: "{{ item }}"
+    enabled: yes
+    state: started
+  loop:
+    - zfs-import-cache.service
+    - zfs-import-scan.service
+    - zfs-mount.service
+    - zfs.target
