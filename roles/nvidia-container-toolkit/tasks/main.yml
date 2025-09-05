@@ -3,18 +3,25 @@
     url: https://nvidia.github.io/nvidia-docker/gpgkey
     state: present
 
-- name: Add NVIDIA Docker repository
-  apt_repository:
-    repo: deb https://nvidia.github.io/libnvidia-container/stable/debian10/$(ARCH) /
-    state: present
+- name: Download NVIDIA Container Toolkit repo list and update for signed-by
+  shell: |
+    curl -s -L https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list | \
+    sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' |
+    > /etc/apt/sources.list.d/nvidia-container-toolkit.list
+  args:
+    creates: /etc/apt/sources.list.d/nvidia-container-toolkit.list
 
-- name: Install NVIDIA Container Toolkit
+- name: Install NVIDIA Container Toolkit and dependencies at fixed version
   apt:
-    name: nvidia-container-toolkit
+    name:
+      - "nvidia-container-toolkit={{ nvidia_container_toolkit_version }}"
+      - "nvidia-container-toolkit-base={{ nvidia_container_toolkit_version }}"
+      - "libnvidia-container-tools={{ nvidia_container_toolkit_version }}"
+      - "libnvidia-container1={{ nvidia_container_toolkit_version }}"
     state: present
     update_cache: yes
+  register: nvidia_toolkit_result
 
-- name: Restart Docker to apply NVIDIA runtime
-  service:
-    name: docker
-    state: restarted
+- name: Configure NVIDIA runtime for Docker
+  command: nvidia-ctk runtime configure --runtime=docker; systemctl restart docker
+  when: nvidia_toolkit_result is changed

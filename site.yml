@@ -2,16 +2,16 @@
 - hosts: all
   become: yes
   become_method: su
-  vars:
-    desktop_users:
-      - copitz
-    sudoers:
-      - copitz
-    open_ports: ['22', '443', '137', '138', '139', '445']
   roles:
     - desktop-environment
-    - basic-security
+    - name: basic-security
+      vars:
+        sudoers:
+          - copitz
+        open_ports: ['22', '443', '137', '138', '139', '445']
     - acpi-powerbutton
     - zfs-import
-#    - docker
-#    - nvidia-container-toolkit
+    - docker
+    - name: nvidia-container-toolkit
+      vars:
+        nvidia_container_toolkit_version: "1.17.8-1"
