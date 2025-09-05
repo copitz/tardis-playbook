@@ -2,6 +2,7 @@
   apt:
     name:
       - kde-plasma-desktop
+      - sddm
     state: present
     update_cache: yes
 
@@ -12,79 +13,31 @@
     state: link
     force: yes
 
-- name: Write desktop users config
-  copy:
-    dest: "{{ desktop_users_config_file }}"
-    content: "{{ desktop_users | join('\n') }}"
-    owner: root
-    group: root
-    mode: '0644'
-
-- name: Ensure systemd user dir exists for each desktop user
-  file:
-    path: "/home/{{ item }}/.config/systemd/user"
-    state: directory
-    owner: "{{ item }}"
-    group: "{{ item }}"
-    mode: "0755"
-  loop: "{{ desktop_users }}"
-
-- name: Ensure Plasma systemd user service is installed
-  copy:
-    dest: "/home/{{ item }}/.config/systemd/user/plasma.service"
-    content: |
-      [Unit]
-      Description=Plasma Desktop Session
-      After=graphical.target
-
-      [Service]
-      ExecStart=/usr/bin/startplasma-wayland
-      Restart=always
-      RestartSec=2
-
-      [Install]
-      WantedBy=default.target
-    owner: "{{ item }}"
-    group: "{{ item }}"
-    mode: "0644"
-  loop: "{{ desktop_users }}"
-
-- name: Enable Plasma systemd user service
-  command: "loginctl enable-linger {{ item }}"
-  loop: "{{ desktop_users }}"
-
 - name: Deploy Desktop Environment start script
   copy:
-    dest: /usr/local/bin/desktop-on
+    dest: /usr/local/bin/desktop
     owner: root
     group: root
     mode: '0755'
     content: |
       #!/bin/bash
-      CONFIG_FILE="{{ desktop_users_config_file }}"
 
-      if [ ! -f "$CONFIG_FILE" ]; then
-        echo "Could not find $CONFIG_FILE"
-        exit 1
-      fi
-
-      if ! grep -qx "$USER" "$CONFIG_FILE"; then
-        echo "User $USER is not allowed to start desktop (missing in $CONFIG_FILE)"
-        exit 1
-      fi
-
-      systemctl --user start plasma
-
-- name: Deploy Desktop Environment stop script
-  copy:
-    dest: /usr/local/bin/desktop-off
-    owner: root
-    group: root
-    mode: '0755'
-    content: |
-      #!/bin/bash
-      systemctl --user stop plasma
-
-      # This frees the RAM caches previously claimed by DE, which should be reclaimable though - so just for monitoring purposes
-      # Not shure about possible site effects, when other services (e.g. docker) should remain running
-      # sudo sh -c "echo 3 > /proc/sys/vm/drop_caches"
+      case "$1" in
+        on)
+          systemctl start sddm.service
+          ;;
+        off)
+          systemctl stop sddm.service
+          ;;
+        toggle)
+          if systemctl is-active --quiet sddm.service; then
+            systemctl stop sddm.service
+          else
+            systemctl start sddm.service
+          fi
+          ;;
+        *)
+          echo "Usage: $0 {on|off|toggle}"
+          exit 1
+          ;;
+      esac

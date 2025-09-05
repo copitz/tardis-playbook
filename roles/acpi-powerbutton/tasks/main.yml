@@ -4,15 +4,17 @@
     state: present
     update_cache: yes
 
-- name: Enable acpid service
-  service:
-    name: acpid
-    state: started
-    enabled: yes
+- name: Rename default power button event handler
+  command: mv /etc/acpi/events/powerbtn-acpi-support /etc/acpi/events/powerbtn-acpi-support.disabled
+  args:
+    removes: /etc/acpi/events/powerbtn-acpi-support
+    creates: /etc/acpi/events/powerbtn-acpi-support.disabled
+  notify: restart acpid
 
-- name: Create ACPI event for power button
+- name: Create custom power button event handler
   copy:
-    dest: /etc/acpi/events/powerbtn-kde
+    dest: /etc/acpi/events/custom-powerbtn
     content: |
-      event=button/power
-      action=/usr/local/bin/toggle-graphical.sh
+      event=button/power.*PBTN.*
+      action=/usr/local/bin/desktop toggle
+  notify: restart acpid
