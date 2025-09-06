@@ -1,0 +1,128 @@
+---
+# --- Network configuration ---
+
+- name: Ensure /etc/network/interfaces has include directive
+  lineinfile:
+    path: /etc/network/interfaces
+    regexp: '^source /etc/network/interfaces.d/\*'
+    line: 'source /etc/network/interfaces.d/*'
+    insertafter: EOF
+
+- name: Configure LAN + SRV networking
+  copy:
+    dest: /etc/network/interfaces.d/net.cfg
+    content: |
+      auto lo
+      iface lo inet loopback
+
+      # Main physical NIC (no IP, used by bridges/VLANs)
+      iface {{ lan_iface }} inet manual
+          post-up /usr/sbin/ethtool -s {{ lan_iface }} wol g
+
+      # LAN bridge (DHCP for host desktop)
+      auto br-lan
+      iface br-lan inet dhcp
+          bridge-ports {{ lan_iface }}
+          bridge-stp off
+          bridge-fd 0
+
+      # SRV VLAN interface (tagged VLAN {{ srv_vlan_id }})
+      auto vlan{{ srv_vlan_id }}
+      iface vlan{{ srv_vlan_id }} inet manual
+          vlan-raw-device {{ lan_iface }}
+
+      # SRV bridge (no IP on host, for Docker containers)
+      auto br-srv
+      iface br-srv inet manual
+          bridge-ports vlan{{ srv_vlan_id }}
+          bridge-stp off
+          bridge-fd 0
+  register: net_config
+
+- name: Restart networking if config changed
+  service:
+    name: networking
+    state: restarted
+  when: net_config.changed
+
+# --- Docker networks ---
+
+- name: Check if SRV network exists
+  command: docker network inspect {{ srv_network_name }}
+  register: srv_net_check
+  changed_when: false
+  failed_when: false
+
+- name: Create Docker SRV network (default for containers)
+  command: >
+    docker network create -d macvlan
+    --subnet={{ srv_subnet }}
+    --gateway={{ srv_gateway }}
+    -o parent=br-srv
+    {{ srv_network_name }}
+  when: srv_net_check.rc != 0
+
+- name: Check if LAN network exists
+  command: docker network inspect {{ lan_network_name }}
+  register: lan_net_check
+  changed_when: false
+  failed_when: false
+
+- name: Create Docker LAN network (for special containers)
+  command: >
+    docker network create -d macvlan
+    --subnet={{ lan_subnet }}
+    --gateway={{ lan_gateway }}
+    -o parent=br-lan
+    {{ lan_network_name }}
+  when: lan_net_check.rc != 0
+
+# --- Disable docker0 bridge ---
+
+- name: Patch daemon.json to disable bridge
+  community.general.json_modify:
+    path: /etc/docker/daemon.json
+    pointer: "/bridge"
+    value: "none"
+  register: docker_daemon_bridge
+
+- name: Patch daemon.json to disable iptables
+  community.general.json_modify:
+    path: /etc/docker/daemon.json
+    pointer: "/iptables"
+    value: false
+  register: docker_daemon_iptables
+
+- name: Patch daemon.json to disable ip-forward
+  community.general.json_modify:
+    path: /etc/docker/daemon.json
+    pointer: "/ip-forward"
+    value: false
+  register: docker_daemon_ipforward
+
+- name: Restart Docker if daemon.json changed
+  service:
+    name: docker
+    state: restarted
+  when: docker_daemon_bridge.changed
+        or docker_daemon_iptables.changed
+        or docker_daemon_ipforward.changed
+
+# --- Global Compose override (srv-net as default) ---
+
+- name: Ensure compose override directory exists
+  file:
+    path: "{{ compose_override_dir }}"
+    state: directory
+    mode: "0755"
+
+- name: Drop default Compose override
+  copy:
+    dest: "{{ compose_override_file }}"
+    content: |
+      version: "3.9"
+      networks:
+        default:
+          external: true
+          name: {{ srv_network_name }}
+    mode: "0644"

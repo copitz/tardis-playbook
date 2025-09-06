@@ -1,0 +1,19 @@
+# Physical NIC for LAN + SRV VLAN
+lan_iface: enp16s0
+
+# VLAN for SRV traffic
+srv_vlan_id: 10
+
+# LAN subnet details (for docker macvlan)
+lan_subnet: 192.168.1.0/24
+lan_gateway: 192.168.1.1
+lan_network_name: lan-net
+
+# SRV subnet details (for docker macvlan)
+srv_subnet: 10.0.0.0/24
+srv_gateway: 10.0.0.1
+srv_network_name: srv-net
+
+# Path for Docker global Compose defaults
+compose_override_dir: /etc/docker/compose-defaults
+compose_override_file: "{{ compose_override_dir }}/default-net.override.yml"
