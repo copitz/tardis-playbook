@@ -1,0 +1,21 @@
+- name: Create GPT on SSD2
+  parted:
+    device: "{{ ssd2_device }}"
+    label: gpt
+    state: present
+
+- name: Create root clone partition
+  parted:
+    device: "{{ ssd2_device }}"
+    number: 1
+    state: present
+    part_start: 1MiB
+    part_end: "{{ ssd2_clone_size }}"
+
+- name: Create ZFS vdev partition
+  parted:
+    device: "{{ ssd2_device }}"
+    number: 2
+    state: present
+    part_start: "{{ ssd2_clone_size }}"
+    part_end: 100%

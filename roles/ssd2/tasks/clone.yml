@@ -1,0 +1,29 @@
+- name: Create filesystem on clone partition
+  filesystem:
+    fstype: ext4
+    dev: "{{ ssd2_device }}p1"
+  when: clone_force|default(false) or not ansible_facts.devices[ssd2_device].partitions['1'].filesystem
+
+- name: Mount clone partition
+  mount:
+    path: "{{ ssd2_clone_mount }}"
+    src: "{{ ssd2_device }}p1"
+    fstype: ext4
+    state: mounted
+
+- name: Rsync root filesystem to clone
+  synchronize:
+    src: /
+    dest: "{{ ssd2_clone_mount }}"
+    archive: yes
+    delete: yes
+    rsync_opts:
+      - "--exclude=/proc/*"
+      - "--exclude=/sys/*"
+      - "--exclude=/dev/*"
+      - "--exclude=/run/*"
+      - "--exclude=/mnt/*"
+      - "--exclude=/tmp/*"
+
+- name: Install GRUB on clone disk
+  command: grub-install --boot-directory={{ ssd2_clone_mount }}/boot {{ ssd2_device }}

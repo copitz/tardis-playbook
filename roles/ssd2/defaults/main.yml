@@ -1,0 +1,4 @@
+ssd2_device: /dev/nvme1n1
+ssd2_clone_size: 100G
+ssd2_clone_mount: /mnt/ssd2clone
+zfs_pool_name: tank

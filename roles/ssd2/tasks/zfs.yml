@@ -1,0 +1,7 @@
+- name: Add SSD2 partition 2 as special vdev if not already present
+  command: >
+    zpool add {{ zfs_pool_name }} special {{ ssd2_device }}p2
+  args:
+    creates: "/dev/zvol/{{ zfs_pool_name }}"
+  register: zpool_add
+  failed_when: zpool_add.rc not in [0,2]  # 2 = already in pool
