@@ -1,0 +1,171 @@
+---
+# --- Guard: KDE/Plasma must not be running ---
+
+- name: Check if any Plasma session is running
+  shell: |
+    loginctl list-sessions --no-legend | awk '{print $1}' | xargs -r -n1 loginctl show-session -p Type -p Name -p State
+  register: plasma_sessions
+  changed_when: false
+  failed_when: false
+
+- name: Assert Plasma is not running
+  assert:
+    that:
+      - "'plasma' not in plasma_sessions.stdout | lower"
+      - "'wayland' not in plasma_sessions.stdout | lower"
+      - "'x11' not in plasma_sessions.stdout | lower"
+    fail_msg: >
+      KDE Plasma appears to be running.  
+      Please log out of all desktop sessions before running the GPU driver role.
+    success_msg: "No Plasma session detected, safe to continue."
+
+# --- Sanity Checks ---
+
+- name: Check AMD driver with glxinfo
+  command: glxinfo -B
+  register: amd_glxinfo
+  changed_when: false
+  failed_when: false
+
+- name: Mark AMD as broken if OpenGL renderer does not contain AMD
+  set_fact:
+    amd_broken: "{{ 'AMD' not in amd_glxinfo.stdout | default('') }}"
+
+- name: Check NVIDIA driver with nvidia-smi
+  command: nvidia-smi
+  register: nvidia_smi
+  changed_when: false
+  failed_when: false
+
+- name: Check DKMS status for NVIDIA
+  command: dkms status
+  register: dkms_status
+  changed_when: false
+  failed_when: false
+
+- name: Mark NVIDIA as broken if nvidia-smi fails or dkms does not report nvidia
+  set_fact:
+    nvidia_broken: "{{ nvidia_smi.rc != 0 or 'nvidia' not in dkms_status.stdout | default('') }}"
+
+# --- Conditional Installs ---
+
+- name: Purge NVIDIA packages if AMD or NVIDIA are broken
+  apt:
+    name: "nvidia-*"
+    state: absent
+    purge: yes
+  when: amd_broken or nvidia_broken
+
+- name: Install AMD GPU stack if broken
+  apt:
+    name:
+      - firmware-amd-graphics
+      - mesa-vulkan-drivers
+      - libgl1-mesa-dri
+      - mesa-utils
+    state: present
+  when: amd_broken
+  register: amd_pkgs
+
+- name: Install kernel headers if NVIDIA broken
+  apt:
+    name: "linux-headers-{{ ansible_kernel }}"
+    state: present
+  when: nvidia_broken
+  register: kernel_headers
+
+- name: Install NVIDIA GPU stack if broken
+  apt:
+    name:
+      - nvidia-kernel-dkms
+      - firmware-misc-nonfree
+      - nvidia-cuda-driver
+      - nvidia-cuda-toolkit  # optional: only if you compile CUDA code directly
+    state: present
+  when: nvidia_broken
+  register: nvidia_pkgs
+
+- name: Blacklist nouveau if NVIDIA broken
+  copy:
+    dest: /etc/modprobe.d/blacklist-nouveau.conf
+    content: |
+      blacklist nouveau
+      options nouveau modeset=0
+  when: nvidia_broken
+
+# --- Update initramfs if needed ---
+- name: Update initramfs after driver changes
+  command: update-initramfs -u
+  when: (amd_pkgs is defined and amd_pkgs is changed) or
+        (nvidia_pkgs is defined and nvidia_pkgs is changed) or
+        (kernel_headers is defined and kernel_headers is changed)
+
+# --- Mesa as default ---
+#- name: Ensure Mesa is the default GLX provider
+#  command: update-alternatives --set glx /usr/lib/x86_64-linux-gnu/mesa
+
+#- name: Ensure Mesa is the default EGL provider
+#  command: update-alternatives --set egl /usr/lib/x86_64-linux-gnu/mesa-egl/libEGL.so.1
+
+#- name: Ensure Mesa libGL is the default
+#  command: update-alternatives --set glx /usr/lib/x86_64-linux-gnu/mesa-diverted/libGL.so.1
+
+# --- Verification (always run, non-fatal) ---
+
+- name: Show AMD renderer info
+  debug:
+    msg: "{{ amd_glxinfo.stdout_lines | select('search','OpenGL renderer string') | list }}"
+  when: amd_glxinfo.rc == 0
+
+- name: Show NVIDIA driver status
+  debug:
+    var: nvidia_smi.stdout_lines
+  when: nvidia_smi.rc == 0
+
+- name: Show DKMS status
+  debug:
+    var: dkms_status.stdout_lines
+  when: dkms_status.rc == 0
+
+# --- Plasma Environment ---
+- name: Force Plasma to use Radeon GPU
+  copy:
+    dest: /etc/environment.d/10-radeon.conf
+    content: |
+      DRI_PRIME=0
+      __GLX_VENDOR_LIBRARY_NAME=mesa
+      LIBVA_DRIVER_NAME=radeonsi
+    mode: "0644"
+
+# --- Desktop GPU Verification ---
+
+- name: Run glxinfo -B as verify_desktop_user
+  command: glxinfo -B
+  become_user: "{{ verify_desktop_user }}"
+  register: gpu_glxinfo
+  changed_when: false
+  failed_when: false
+
+- name: Show OpenGL renderer string
+  debug:
+    msg: "{{ gpu_glxinfo.stdout_lines | select('search','OpenGL renderer string') | list }}"
+
+- name: Verify Mesa/AMDGPU is used for desktop (X11/Wayland)
+  assert:
+    that:
+      - "'AMD' in gpu_glxinfo.stdout"
+    fail_msg: "Desktop rendering is NOT using AMD GPU (check Mesa alternatives + /etc/environment.d/10-radeon.conf)"
+    success_msg: "Desktop rendering verified: AMD GPU is in use for X11/Wayland"
+
+# --- NVIDIA Sanity (CUDA only) ---
+
+- name: Run nvidia-smi for CUDA check
+  command: nvidia-smi
+  register: nvidia_smi
+  changed_when: false
+  failed_when: false
+
+- name: Show NVIDIA CUDA driver status
+  debug:
+    var: nvidia_smi.stdout_lines
+  when: nvidia_smi.rc == 0

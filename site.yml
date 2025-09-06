@@ -12,6 +12,9 @@
     - acpi-powerbutton
     - zfs-import
     - docker
+    - role: drivers-graphics
+      vars:
+        verify_desktop_user: copitz
     - name: nvidia-container-toolkit
       vars:
         nvidia_container_toolkit_version: "1.17.8-1"

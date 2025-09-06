@@ -23,5 +23,5 @@
   register: nvidia_toolkit_result
 
 - name: Configure NVIDIA runtime for Docker
-  command: nvidia-ctk runtime configure --runtime=docker; systemctl restart docker
+  shell: nvidia-ctk runtime configure --runtime=docker; systemctl restart docker
   when: nvidia_toolkit_result is changed
