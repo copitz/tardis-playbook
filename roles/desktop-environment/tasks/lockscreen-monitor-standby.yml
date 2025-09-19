@@ -1,0 +1,59 @@
+- name: Install lock-dpms script - to switch off monitors on lock screen
+  copy:
+    dest: /usr/local/bin/lock-dpms
+    mode: "0755"
+    content: |
+      #!/bin/bash
+      #
+      # Switch off the monitors when the lock screen appears - and back on, on activity
+      #
+      # For whatever reason this only works once per lock screen invocation
+      # (Means: After this script has switched the monitors off initially on screen lock,
+      # the monitors will be switched on again on activity, but if you stay idle after that
+      # in the lock screen still, the monitors won't be switched off again)
+
+      TIMEOUT={{ lock_monitor_timeout | default(30) }}
+
+      LOCKED=no
+
+      dbus-monitor --session "type='signal',interface='org.freedesktop.ScreenSaver'" |
+      while read -r line; do
+          if echo "$line" | grep -q "ActiveChanged"; then
+              read -r next
+              # Check if the next line indicates the screen is locked and LOCKED is 'no'
+              if echo "$next" | grep -q "true" && [ "$LOCKED" = "no" ]; then
+                  (
+                    sleep $TIMEOUT
+                    echo "Turning off monitors"
+                    kscreen-doctor --dpms off
+                  ) &
+                  LOCKED=yes
+              elif echo "$next" | grep -q "false" && [ "$LOCKED" = "yes" ]; then
+                  LOCKED=no
+                  echo "Turning on monitors"
+                  kscreen-doctor --dpms on
+              fi
+          fi
+      done
+
+- name: Install lock-dpms systemd user unit (global)
+  copy:
+    dest: /etc/systemd/user/lock-dpms.service
+    mode: "0644"
+    content: |
+      [Unit]
+      Description=Turn off monitors after lockscreen timeout (Wayland)
+      After=graphical.target
+
+      [Service]
+      ExecStart=/usr/local/bin/lock-dpms
+      Restart=always
+
+      [Install]
+      WantedBy=default.target
+
+- name: Enable lock-dpms service globally
+  systemd:
+    name: lock-dpms.service
+    scope: global
+    enabled: true

@@ -22,16 +22,22 @@
     content: |
       #!/bin/bash
 
+      stop_desktop() {
+        systemctl stop sddm.service
+        sleep 2
+        chvt 2
+      }
+
       case "$1" in
         on)
           systemctl start sddm.service
           ;;
         off)
-          systemctl stop sddm.service
+          stop_desktop
           ;;
         toggle)
           if systemctl is-active --quiet sddm.service; then
-            systemctl stop sddm.service
+            stop_desktop
           else
             systemctl start sddm.service
           fi
@@ -41,3 +47,11 @@
           exit 1
           ;;
       esac
+
+- name: Mask PowerDevil for all users - to not interfere with the tardis server part still running in the background (or acpid)
+  ansible.builtin.systemd:
+    name: plasma-powerdevil.service
+    scope: global
+    masked: true
+
+- import_tasks: lockscreen-monitor-standby.yml
