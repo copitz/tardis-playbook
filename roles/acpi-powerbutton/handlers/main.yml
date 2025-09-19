@@ -2,3 +2,7 @@
   systemd:
     name: acpid
     state: restarted
+- name: restart systemd-logind
+  ansible.builtin.systemd:
+    name: systemd-logind
+    state: restarted

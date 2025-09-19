@@ -15,6 +15,15 @@
   copy:
     dest: /etc/acpi/events/custom-powerbtn
     content: |
-      event=button/power.*PBTN.*
+      event=button/power PBTN
       action=/usr/local/bin/desktop toggle
   notify: restart acpid
+
+- name: Ensure systemd-logind ignores power key
+  ansible.builtin.lineinfile:
+    path: /etc/systemd/logind.conf
+    regexp: '^#?HandlePowerKey='
+    line: 'HandlePowerKey=ignore'
+    create: yes
+    backup: yes
+  notify: restart systemd-logind
