@@ -18,6 +18,5 @@
     state: started
   loop:
     - zfs-import-cache.service
-    - zfs-import-scan.service
     - zfs-mount.service
     - zfs.target
