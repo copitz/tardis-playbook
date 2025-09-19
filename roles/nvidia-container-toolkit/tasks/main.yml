@@ -1,15 +1,17 @@
-- name: Add NVIDIA GPG key
-  apt_key:
-    url: https://nvidia.github.io/nvidia-docker/gpgkey
+- name: Add Module Repository
+  ansible.builtin.deb822_repository:
+    name: nvidia-container-toolkit
+    uris: "https://nvidia.github.io/libnvidia-container/stable/deb/amd64"
+    signed_by: "https://nvidia.github.io/libnvidia-container/gpgkey"
+    suites: [/]
     state: present
+    enabled: yes
 
-- name: Download NVIDIA Container Toolkit repo list and update for signed-by
-  shell: |
-    curl -s -L https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list | \
-    sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' |
-    > /etc/apt/sources.list.d/nvidia-container-toolkit.list
-  args:
-    creates: /etc/apt/sources.list.d/nvidia-container-toolkit.list
+- name: Check if nvidia-smi and docker are present
+  ansible.builtin.command: nvidia-smi && docker -v
+  register: nvidia_smi
+  changed_when: false
+  failed_when: false
 
 - name: Install NVIDIA Container Toolkit and dependencies at fixed version
   apt:
@@ -20,8 +22,9 @@
       - "libnvidia-container1={{ nvidia_container_toolkit_version }}"
     state: present
     update_cache: yes
+  when: nvidia_smi.rc == 0
   register: nvidia_toolkit_result
 
 - name: Configure NVIDIA runtime for Docker
   shell: nvidia-ctk runtime configure --runtime=docker; systemctl restart docker
-  when: nvidia_toolkit_result is changed
+  when: nvidia_smi.rc == 0 and nvidia_toolkit_result is changed
