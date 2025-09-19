@@ -1,0 +1,74 @@
+---
+# --- Guard: KDE/Plasma must not be running ---
+
+- name: Check if any Plasma session is running
+  shell: |
+    loginctl list-sessions --no-legend | awk '{print $1}' | xargs -r -n1 loginctl show-session -p Type -p Name -p State
+  register: plasma_sessions
+  changed_when: false
+  failed_when: false
+
+- name: Assert Plasma is not running
+  assert:
+    that:
+      - "'plasma' not in plasma_sessions.stdout | lower"
+      - "'wayland' not in plasma_sessions.stdout | lower"
+      - "'x11' not in plasma_sessions.stdout | lower"
+    fail_msg: >
+      KDE Plasma appears to be running.
+      Please log out of all desktop sessions before running the GPU driver role.
+    success_msg: "No Plasma session detected, safe to continue."
+  ignore_errors: yes
+  register: session_assertion
+
+- name: Run graphics drivers installation
+  when: session_assertion.failed == false
+  block:
+    - name: Install AMD GPU stack
+      apt:
+        name:
+          - firmware-amd-graphics
+          - libgl1-mesa-dri
+          - libglx-mesa0
+          - mesa-vulkan-drivers
+          - mesa-utils
+        state: present
+
+    # --- Mesa as default ---
+    #- name: Ensure Mesa is the default GLX provider
+    #  command: update-alternatives --set glx /usr/lib/x86_64-linux-gnu/mesa
+
+    #- name: Ensure Mesa is the default EGL provider
+    #  command: update-alternatives --set egl /usr/lib/x86_64-linux-gnu/mesa-egl/libEGL.so.1
+
+    #- name: Ensure Mesa libGL is the default
+    #  command: update-alternatives --set glx /usr/lib/x86_64-linux-gnu/mesa-diverted/libGL.so.1
+
+    # --- Plasma Environment ---
+    - name: Force Plasma to use Radeon GPU
+      copy:
+        dest: /etc/environment.d/10-radeon.conf
+        content: |
+          DRI_PRIME=0
+          __GLX_VENDOR_LIBRARY_NAME=mesa
+          LIBVA_DRIVER_NAME=radeonsi
+        mode: "0644"
+
+    # --- Desktop GPU Verification ---
+
+    - name: Run glxinfo -B
+      command: glxinfo -B
+      register: gpu_glxinfo
+      changed_when: false
+      failed_when: false
+
+    - name: Show OpenGL renderer string
+      debug:
+        msg: "{{ gpu_glxinfo.stdout_lines | select('search','OpenGL renderer string') | list }}"
+
+    - name: Verify Mesa/AMDGPU is used for desktop (X11/Wayland)
+      assert:
+        that:
+          - "'AMD' in gpu_glxinfo.stdout"
+        fail_msg: "Desktop rendering is NOT using AMD GPU (check Mesa alternatives + /etc/environment.d/10-radeon.conf)"
+        success_msg: "Desktop rendering verified: AMD GPU is in use for X11/Wayland"

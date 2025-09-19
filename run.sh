@@ -17,8 +17,21 @@ source "$VENV/bin/activate"
 
 if ! python -c "import ansible" &>/dev/null; then
   pip install --upgrade pip
-  pip install ansible
+  pip install -r requirements.txt
   ansible-galaxy collection install -r requirements.yml
 fi
 
-ansible-playbook site.yml -i inventory --ask-become-pass
+# Handle special flags
+if [ "$1" == "--list" ]; then
+  ansible-playbook site.yml -i inventory --list-tags
+  exit 0
+fi
+
+# If args are given, run only those tags
+if [ $# -gt 0 ]; then
+  TAGS="$*"
+  ansible-playbook site.yml -i inventory --ask-become-pass --tags "$TAGS"
+else
+  # By default, skip manual roles
+  ansible-playbook site.yml -i inventory --ask-become-pass --skip-tags manual
+fi

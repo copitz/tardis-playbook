@@ -1,0 +1,3 @@
+- import_tasks: nvidia-cuda.yml
+#Not sure if that is really necessary:
+#- import_tasks: amd-radeon.yml

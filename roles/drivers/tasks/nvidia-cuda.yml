@@ -1,0 +1,63 @@
+- name: Disable the default driver (nouveau)
+  copy:
+    dest: /etc/modprobe.d/blacklist-nouveau.conf
+    content: |
+      blacklist nouveau
+      options nouveau modeset=0
+
+- name: Define candidate Debian major versions for CUDA repo
+  set_fact:
+    cuda_debian_versions:
+      - "{{ ansible_distribution_major_version }}"
+      - "{{ ansible_distribution_major_version|int - 1 }}"
+      - "{{ ansible_distribution_major_version|int - 2 }}"
+
+- name: Probe available CUDA repos
+  ansible.builtin.uri:
+    url: "https://developer.download.nvidia.com/compute/cuda/repos/debian{{ item }}/{{ ansible_architecture }}/cuda-keyring_1.1-1_all.deb"
+    method: HEAD
+    return_content: no
+    status_code: 200
+  loop: "{{ cuda_debian_versions }}"
+  loop_control:
+    loop_var: item
+  register: cuda_repo_checks
+  failed_when: false
+  changed_when: false
+
+- name: Pick first available CUDA repo
+  set_fact:
+    cuda_repo_url: "{{ (cuda_repo_checks.results | selectattr('status','equalto',200) | map(attribute='invocation.module_args.url') | list | first) | default('') }}"
+
+- name: Fail if no suitable CUDA repo was found
+  ansible.builtin.fail:
+    msg: "No supported CUDA repo found for Debian versions: {{ cuda_debian_versions }}"
+  when: cuda_repo_url == ""
+
+- name: Add CUDA keyring
+  ansible.builtin.apt:
+    deb: "{{ cuda_repo_url }}"
+    state: present
+  register: cuda_keyring
+
+- name: Reboot if CUDA keyring was just installed
+  ansible.builtin.reboot:
+    msg: "Rebooting after installing NVIDIA CUDA keyring"
+    connect_timeout: 5        # seconds to wait for SSH to connect
+    reboot_timeout: 600       # max time (in seconds) to wait for reboot
+    pre_reboot_delay: 0       # wait before initiating reboot
+    post_reboot_delay: 30     # wait before starting SSH checks
+    test_command: whoami      # simple command to test SSH availability
+  when: cuda_keyring.changed
+
+- name: Install CUDA drivers (kernel + userspace)
+  ansible.builtin.apt:
+    name: cuda-drivers
+    update_cache: true
+    state: present
+
+- name: Verify nvidia-smi works
+  ansible.builtin.command: nvidia-smi
+  register: nvidia_smi
+  changed_when: false
+  failed_when: nvidia_smi.rc != 0
