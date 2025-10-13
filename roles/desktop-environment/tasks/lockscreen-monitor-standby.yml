@@ -1,17 +1,24 @@
-- name: Install lock-dpms script - to switch off monitors on lock screen
+- name: Install kscreen-off-when-locked script - to switch off monitors on lock screen
   copy:
-    dest: /usr/local/bin/lock-dpms
+    dest: /usr/local/bin/kscreen-off-when-locked
     mode: "0755"
     content: |
       #!/bin/bash
       #
       # Switch off the monitors when the lock screen appears - and back on, on activity
       #
-      # For whatever reason this only works once per lock screen invocation
-      # (Means: After this script has switched the monitors off initially on screen lock,
-      # the monitors will be switched on again on activity, but if you stay idle after that
-      # in the lock screen still, the monitors won't be switched off again)
+      # This script is intended to be run as a systemd user service in the user's graphical session.
+      #
+      # This only works once per lock screen invocation (Means: After this script has switched
+      # the monitors off initially on screen lock, the monitors will be switched on again on activity,
+      # but if you stay idle after that in the lock screen, the monitors won't be switched off again)
+      #
+      # I was missing the time to complete this script to support repeated idling in the lock screen
+      # but or because there is an easy workaround: 
+      #   Just press ESC in the lock screen to turn the monitors off
 
+      set -e
+      
       TIMEOUT={{ lock_monitor_timeout | default(30) }}
 
       LOCKED=no
@@ -24,8 +31,10 @@
               if echo "$next" | grep -q "true" && [ "$LOCKED" = "no" ]; then
                   (
                     sleep $TIMEOUT
-                    echo "Turning off monitors"
-                    kscreen-doctor --dpms off
+                    if qdbus6 org.kde.screensaver /ScreenSaver org.freedesktop.ScreenSaver.GetActive | grep -q "true"; then
+                      echo "Turning off monitors"
+                      kscreen-doctor --dpms off
+                    fi
                   ) &
                   LOCKED=yes
               elif echo "$next" | grep -q "false" && [ "$LOCKED" = "yes" ]; then
@@ -33,27 +42,31 @@
                   echo "Turning on monitors"
                   kscreen-doctor --dpms on
               fi
+          else
+            echo "$line"  # just for debugging
           fi
       done
 
-- name: Install lock-dpms systemd user unit (global)
+- name: Install kscreen-lock-dpms systemd user unit (global)
   copy:
-    dest: /etc/systemd/user/lock-dpms.service
+    dest: /etc/systemd/user/kscreen-lock-dpms.service
     mode: "0644"
     content: |
       [Unit]
       Description=Turn off monitors after lockscreen timeout (Wayland)
-      After=graphical.target
+      # Start with the user's graphical session
+      After=graphical-session.target
+      PartOf=graphical-session.target
 
       [Service]
-      ExecStart=/usr/local/bin/lock-dpms
+      ExecStart=/usr/local/bin/kscreen-off-when-locked
       Restart=always
 
       [Install]
-      WantedBy=default.target
+      WantedBy=graphical-session.target
 
-- name: Enable lock-dpms service globally
+- name: Enable kscreen-lock-dpms service globally
   systemd:
-    name: lock-dpms.service
+    name: kscreen-lock-dpms.service
     scope: global
     enabled: true
