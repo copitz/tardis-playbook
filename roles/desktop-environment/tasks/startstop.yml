@@ -1,0 +1,73 @@
+
+- name: Install acpid
+  apt:
+    name: acpid
+    state: present
+    update_cache: yes
+
+- name: Rename default power button event handler
+  command: mv /etc/acpi/events/powerbtn-acpi-support /etc/acpi/events/powerbtn-acpi-support.disabled
+  args:
+    removes: /etc/acpi/events/powerbtn-acpi-support
+    creates: /etc/acpi/events/powerbtn-acpi-support.disabled
+  notify: restart acpid
+
+- name: Ensure systemd-logind ignores power key
+  ansible.builtin.lineinfile:
+    path: /etc/systemd/logind.conf
+    regexp: '^#?HandlePowerKey='
+    line: 'HandlePowerKey=ignore'
+    create: yes
+    backup: yes
+  notify: restart systemd-logind
+
+- name: Create custom power button event listener
+  copy:
+    dest: /etc/acpi/events/custom-powerbtn
+    content: |
+      event=button/power PBTN
+      action=/usr/local/bin/desktop power-btn-press
+  notify: restart acpid
+
+- name: Deploy Desktop Environment start / stop script
+  copy:
+    src: desktop.sh
+    dest: /usr/local/bin/desktop
+    owner: root
+    group: root
+    mode: '0755'
+    force: true
+
+- name: Deploy tty-blank script
+  copy:
+    src: tty-blank.sh
+    dest: /usr/local/bin/tty-blank
+    owner: root
+    group: root
+    mode: '0755'
+    force: true
+
+- name: Install kscreen-dpms-(on|off) systemd user units (global)
+  copy:
+    dest: /etc/systemd/user/kscreen-dpms-{{ item }}.service
+    mode: "0644"
+    content: |
+      [Unit]
+      Description=Turn monitors off via KScreen
+      PartOf=graphical-session.target
+      After=graphical-session.target
+
+      [Service]
+      Type=oneshot
+      ExecStart=/usr/bin/kscreen-doctor --dpms {{ item }}
+
+      [Install]
+      WantedBy=graphical-session.target
+  loop: ['on', 'off']
+
+- name: Enable kscreen-dpms-(on|off) services globally
+  systemd:
+    name: "kscreen-dpms-{{ item }}.service"
+    scope: global
+    enabled: true
+  loop: ['on', 'off']
