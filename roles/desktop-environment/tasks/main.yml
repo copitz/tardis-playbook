@@ -21,4 +21,5 @@
     masked: true
 
 - import_tasks: startstop.yml
+- import_tasks: sddm.yml
 - import_tasks: lockscreen-monitor-standby.yml

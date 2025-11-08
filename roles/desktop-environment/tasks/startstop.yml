@@ -1,3 +1,70 @@
+#################################
+# Lock down plasma / sddm       #
+#################################
+
+- name: Configure logind to disable poweroff, reboot, suspend, and hibernate options
+  ansible.builtin.blockinfile:
+    path: /etc/systemd/logind.conf
+    block: |
+      [Login]
+      # Prevent logind from handling power/suspend keys (ACPI script handles them)
+      HandlePowerKey=ignore
+      HandleSuspendKey=ignore
+      HandleHibernateKey=ignore
+      HandleLidSwitch=ignore
+    create: yes
+    marker: "# {mark} ANSIBLE managed logind configuration"
+  notify: restart systemd-logind
+
+# Not actually required, but just to be sure...
+- name: Disable sleep, hibernate, and hybrid-sleep targets
+  ansible.builtin.systemd:
+    name: "{{ item }}"
+    masked: true
+  loop:
+    - sleep.target
+    - suspend.target
+    - hibernate.target
+    - hybrid-sleep.target
+
+- name: Deny power management actions for normal users
+  ansible.builtin.copy:
+    dest: /etc/polkit-1/rules.d/50-deny-power-actions.rules
+    owner: root
+    group: root
+    mode: '0644'
+    content: |
+      // Deny GUI-triggered power actions (Plasma, GDM, etc.)
+      polkit.addRule(function(action, subject) {
+          if (!subject.isInGroup("wheel") && subject.uid != 0 &&
+              [
+                "org.freedesktop.login1.reboot",
+                "org.freedesktop.login1.power-off",
+                "org.freedesktop.login1.halt",
+                "org.freedesktop.login1.suspend",
+                "org.freedesktop.login1.hibernate",
+                "org.freedesktop.login1.handle-lid-switch"
+              ].indexOf(action.id.replace(/(-multiple-sessions|-ignore-inhibit)$/, "")) >= 0) {
+              return polkit.Result.NO;
+          }
+      });
+
+- name: Disable KDE power actions using kiosk restrictions
+  become: true
+  ansible.builtin.blockinfile:
+    path: /etc/xdg/kdeglobals
+    block: |
+      [KDE Action Restrictions]
+      reboot=false
+      shutdown=false
+      suspend=false
+      hibernate=false
+    marker: "# {mark} ANSIBLE managed kiosk restrictions"
+    create: yes
+
+#################################
+# ACPId setup                   #
+#################################
 
 - name: Install acpid
   apt:
@@ -12,15 +79,6 @@
     creates: /etc/acpi/events/powerbtn-acpi-support.disabled
   notify: restart acpid
 
-- name: Ensure systemd-logind ignores power key
-  ansible.builtin.lineinfile:
-    path: /etc/systemd/logind.conf
-    regexp: '^#?HandlePowerKey='
-    line: 'HandlePowerKey=ignore'
-    create: yes
-    backup: yes
-  notify: restart systemd-logind
-
 - name: Create custom power button event listener
   copy:
     dest: /etc/acpi/events/custom-powerbtn
@@ -28,6 +86,10 @@
       event=button/power PBTN
       action=/usr/local/bin/desktop power-btn-press
   notify: restart acpid
+
+#################################
+# Scripts                       #
+#################################
 
 - name: Deploy Desktop Environment start / stop script
   copy:
@@ -47,13 +109,17 @@
     mode: '0755'
     force: true
 
+#################################
+# Services needed by desktop.sh #
+#################################
+
 - name: Install kscreen-dpms-(on|off) systemd user units (global)
   copy:
     dest: /etc/systemd/user/kscreen-dpms-{{ item }}.service
     mode: "0644"
     content: |
       [Unit]
-      Description=Turn monitors off via KScreen
+      Description=Turn monitors {{ item }} via KScreen
       PartOf=graphical-session.target
       After=graphical-session.target
 

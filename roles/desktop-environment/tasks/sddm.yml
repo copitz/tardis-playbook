@@ -1,0 +1,63 @@
+# Create and use a custom SDDM theme based on debian-breeze without power buttons
+
+- name: Check if custom SDDM theme already exists
+  ansible.builtin.stat:
+    path: /usr/share/sddm/themes/debian-breeze-custom
+  register: sddm_custom_theme
+
+- name: Create sddm custom theme if not exists
+  when: not sddm_custom_theme.stat.exists
+  block:
+  - name: Clone to custom SDDM theme
+    ansible.builtin.copy:
+      src: /usr/share/sddm/themes/debian-breeze/
+      dest: /usr/share/sddm/themes/debian-breeze-custom/
+      remote_src: true
+      owner: root
+      group: root
+      mode: '0755'
+
+  - name: Remove power buttons
+    ansible.builtin.replace:
+      path: /usr/share/sddm/themes/debian-breeze-custom/Main.qml
+      regexp: '^\s+ActionButton\s*{\s*[^}]*sddm\.(powerOff|reboot|suspend)\(\)[^}]*},'
+      replace: ''
+
+  - name: Remove metadata translations
+    ansible.builtin.replace:
+      path: /usr/share/sddm/themes/debian-breeze-custom/metadata.desktop
+      regexp: '^(Name|Description)\[.+?\].+?\n'
+      replace: ''
+
+  - name: Set theme metadata
+    community.general.ini_file:
+      path: /usr/share/sddm/themes/debian-breeze-custom/metadata.desktop
+      section: SddmGreeterTheme
+      option: "{{ item.option }}"
+      value: "{{ item.value }}"
+    loop:
+      - option: Name
+        value: Debian Breeze - No Power
+      - option: Description
+        value: A customized version of the Debian Breeze theme without power buttons.
+      - option: Author
+        value: "Ansible ({{ role_path}})"
+
+- name: Ensure SDDM configuration directory exists
+  ansible.builtin.file:
+    path: /etc/sddm.conf.d
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+
+- name: Set custom SDDM theme
+  community.general.ini_file:
+    path: /etc/sddm.conf.d/kde_settings.conf
+    mode: '0644'
+    owner: root
+    group: root
+    create: true
+    section: Theme
+    option: Current
+    value: debian-breeze-custom
