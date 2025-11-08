@@ -15,8 +15,6 @@
           - copitz
         open_ports: ['22', '443', '137', '138', '139', '445']
       tags: [sec]
-    - role: acpi-powerbutton
-      tags: [acpi]
     - role: zfs-import
       tags: [zfs]
     - docker
