@@ -120,20 +120,9 @@
     content: |
       [Unit]
       Description=Turn monitors {{ item }} via KScreen
-      PartOf=graphical-session.target
       After=graphical-session.target
 
       [Service]
       Type=oneshot
       ExecStart=/usr/bin/kscreen-doctor --dpms {{ item }}
-
-      [Install]
-      WantedBy=graphical-session.target
-  loop: ['on', 'off']
-
-- name: Enable kscreen-dpms-(on|off) services globally
-  systemd:
-    name: "kscreen-dpms-{{ item }}.service"
-    scope: global
-    enabled: true
   loop: ['on', 'off']
