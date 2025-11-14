@@ -1,30 +1,50 @@
 ---
+# --- Required packages ---
+- name: Install required packages for networking
+  apt:
+    name:
+      - ifupdown2
+      - vlan
+    state: present
+    update_cache: yes
+
+- name: Fix missing file for ifupdown2
+  become: yes
+  ansible.builtin.shell:
+    cmd: mkdir -p /etc/iproute2/rt_tables.d && touch /etc/iproute2/rt_tables.d/ifupdown2_vrf_map.conf
+    creates: /etc/iproute2/rt_tables.d/ifupdown2_vrf_map.conf
+
 # --- Network configuration ---
 
 - name: Ensure /etc/network/interfaces has include directive
-  lineinfile:
-    path: /etc/network/interfaces
-    regexp: '^source /etc/network/interfaces.d/\*'
-    line: 'source /etc/network/interfaces.d/*'
-    insertafter: EOF
+  copy:
+    dest: /etc/network/interfaces
+    content: |
+      source /etc/network/interfaces.d/*
+
+      auto lo
+      iface lo inet loopback
+
 
 - name: Configure LAN + SRV networking
   copy:
     dest: /etc/network/interfaces.d/net.cfg
     content: |
-      auto lo
-      iface lo inet loopback
-
       # Main physical NIC (no IP, used by bridges/VLANs)
+      auto {{ lan_iface }}
+      allow-hotplug {{ lan_iface }}
       iface {{ lan_iface }} inet manual
-          post-up /usr/sbin/ethtool -s {{ lan_iface }} wol g
 
       # LAN bridge (DHCP for host desktop)
       auto br-lan
+      allow-hotplug br-lan
       iface br-lan inet dhcp
           bridge-ports {{ lan_iface }}
           bridge-stp off
           bridge-fd 0
+          
+      # Make sure the VLAN module is loaded before we touch vlan10
+      pre-up modprobe 8021q
 
       # SRV VLAN interface (tagged VLAN {{ srv_vlan_id }})
       auto vlan{{ srv_vlan_id }}
@@ -33,96 +53,72 @@
 
       # SRV bridge (no IP on host, for Docker containers)
       auto br-srv
-      iface br-srv inet manual
+      iface br-srv inet static
+          address {{ srv_address }}
+          # gateway {{ srv_gateway }} # Keep the gateway commented out to not make this the default route
           bridge-ports vlan{{ srv_vlan_id }}
           bridge-stp off
           bridge-fd 0
+
+          # Host must *not* route over br-srv
+          post-up ip route del {{ srv_address | ansible.utils.ipaddr('network/prefix') }} dev br-srv 2>/dev/null || true
+          post-up ip route add {{ srv_address | ansible.utils.ipaddr('network/prefix') }} dev br-srv metric 500
+          post-down ip route del {{ srv_address | ansible.utils.ipaddr('network/prefix') }} dev br-srv || true
+
+          # Prevent host DNS / multicast / Spotify fallback via br-srv
+          post-up ip rule add iif br-srv lookup 100 unreachable
+          post-down ip rule del iif br-srv lookup 100 unreachable || true
+
+          post-up ip rule add oif br-srv lookup 100 unreachable
+          post-down ip rule del oif br-srv lookup 100 unreachable || true
+
+          # Optional but strong isolation: no ARP on this bridge
+          post-up ip link set dev br-srv arp off
+          post-down ip link set dev br-srv arp on
   register: net_config
 
 - name: Restart networking if config changed
-  service:
-    name: networking
-    state: restarted
+  command: ifreload -a
   when: net_config.changed
 
+
+# --- Verify network connectivity (ping gateway) ---
+- name: Refresh network facts if config changed
+  ansible.builtin.setup:
+    gather_subset:
+      - network
+
+- name: Assert LAN is the default route
+  ansible.builtin.assert:
+    that: ansible_default_ipv4.interface == 'br-lan'
+    success_msg: "LAN is the default route"
+    fail_msg: "LAN is not the default route, current default route is via {{ ansible_default_ipv4.interface }}"
+
+- name: Verify LAN connectivity
+  vars:
+    test_target: "{{ ansible_default_ipv4.gateway }}"
+  ansible.builtin.command:
+    cmd: "ping -I br-lan -c 2 -W 2 {{ test_target }}"
+  register: ping_result
+  changed_when: false
+  failed_when: ping_result.rc != 0
+  retries: 3
+  delay: 2
+  until: ping_result.rc == 0
+
 # --- Docker networks ---
+- name: "Ensure Docker SRV network exists and matches expected config"
+  import_tasks: docker.yml
+  vars:
+    name: "{{ srv_network_name }}"
+    parent: br-srv
+    subnet: "{{ srv_address | ansible.utils.ipaddr('network/prefix') }}"
+    gateway: "{{ srv_gateway }}"
 
-- name: Check if SRV network exists
-  command: docker network inspect {{ srv_network_name }}
-  register: srv_net_check
-  changed_when: false
-  failed_when: false
-
-- name: Create Docker SRV network (default for containers)
-  command: >
-    docker network create -d macvlan
-    --subnet={{ srv_subnet }}
-    --gateway={{ srv_gateway }}
-    -o parent=br-srv
-    {{ srv_network_name }}
-  when: srv_net_check.rc != 0
-
-- name: Check if LAN network exists
-  command: docker network inspect {{ lan_network_name }}
-  register: lan_net_check
-  changed_when: false
-  failed_when: false
-
-- name: Create Docker LAN network (for special containers)
-  command: >
-    docker network create -d macvlan
-    --subnet={{ lan_subnet }}
-    --gateway={{ lan_gateway }}
-    -o parent=br-lan
-    {{ lan_network_name }}
-  when: lan_net_check.rc != 0
-
-# --- Disable docker0 bridge ---
-
-- name: Patch daemon.json to disable bridge
-  community.general.json_modify:
-    path: /etc/docker/daemon.json
-    pointer: "/bridge"
-    value: "none"
-  register: docker_daemon_bridge
-
-- name: Patch daemon.json to disable iptables
-  community.general.json_modify:
-    path: /etc/docker/daemon.json
-    pointer: "/iptables"
-    value: false
-  register: docker_daemon_iptables
-
-- name: Patch daemon.json to disable ip-forward
-  community.general.json_modify:
-    path: /etc/docker/daemon.json
-    pointer: "/ip-forward"
-    value: false
-  register: docker_daemon_ipforward
-
-- name: Restart Docker if daemon.json changed
-  service:
-    name: docker
-    state: restarted
-  when: docker_daemon_bridge.changed
-        or docker_daemon_iptables.changed
-        or docker_daemon_ipforward.changed
-
-# --- Global Compose override (srv-net as default) ---
-
-- name: Ensure compose override directory exists
-  file:
-    path: "{{ compose_override_dir }}"
-    state: directory
-    mode: "0755"
-
-- name: Drop default Compose override
-  copy:
-    dest: "{{ compose_override_file }}"
-    content: |
-      version: "3.9"
-      networks:
-        default:
-          external: true
-          name: {{ srv_network_name }}
-    mode: "0644"
+- name: "Ensure Docker LAN network exists and matches expected config"
+  import_tasks: docker.yml    
+  vars:
+    name: "{{ lan_network_name }}"
+    parent: br-lan
+    subnet: "{{ ansible_default_ipv4.network ~ '/' ~ ansible_default_ipv4.prefix }}"
+    gateway: "{{ ansible_default_ipv4.gateway }}"

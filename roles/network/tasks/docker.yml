@@ -1,0 +1,50 @@
+# Create a docker network if it doesn't exist or assert it has the correct config
+
+- name: "docker/{{ name }}: Inspect network"
+  ansible.builtin.command: "docker network inspect {{ name }}"
+  register: docker_net_inspect_raw
+  failed_when: false
+  changed_when: false
+
+- name: "docker/{{ name }}: Set fact whether network exists"
+  set_fact:
+    docker_net_exists: "{{ docker_net_inspect_raw.rc == 0 }}"
+
+- name: "docker/{{ name }}: Parse existing network"
+  set_fact:
+    docker_net_inspect: "{{ docker_net_inspect_raw.stdout | from_json }}"
+  when: docker_net_exists
+
+- name: "docker/{{ name }}: Assert subnet matches expected"
+  vars:
+    existing: "{{ docker_net_inspect[0].IPAM.Config[0].Subnet }}"
+  assert:
+    that:
+      - existing == subnet
+    fail_msg: >
+      Docker network {{ name }} exists but subnet is {{ existing }},
+      expected {{ subnet }}.
+    success_msg: All ok
+  when: docker_net_exists
+
+- name: "docker/{{ name }}: Assert gateway matches expected"
+  vars:
+    existing: "{{ docker_net_inspect[0].IPAM.Config[0].Gateway }}"
+  assert:
+    that:
+      - existing == gateway
+    fail_msg: >
+      Docker network {{ name }} exists but gateway is {{ existing }},
+      expected {{ gateway }}.
+    success_msg: All ok
+  when: docker_net_exists
+
+- name: "docker/{{ name }}: Create docker network"
+  command: >
+    docker network create -d {{ driver | default('ipvlan') }}
+    --subnet={{ subnet }}
+    --gateway={{ gateway }}
+    -o parent={{ parent }}
+    {{ name }}
+  when: not docker_net_exists
+

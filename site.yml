@@ -22,6 +22,8 @@
       vars:
         verify_desktop_user: copitz
       tags: [drivers]
+    - role: network
+      tags: [net]
     - role: nvidia-container-toolkit
       vars:
         nvidia_container_toolkit_version: "1.17.8-1"
