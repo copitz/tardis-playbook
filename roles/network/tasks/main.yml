@@ -27,6 +27,8 @@
 
 
 - name: Configure LAN + SRV networking
+  vars:
+    srv_net: "{{ srv_address | ansible.utils.ipaddr('network/prefix') }}"
   copy:
     dest: /etc/network/interfaces.d/net.cfg
     content: |
@@ -35,52 +37,62 @@
       allow-hotplug {{ lan_iface }}
       iface {{ lan_iface }} inet manual
 
-      # LAN bridge (DHCP for host desktop)
+      auto br-main
+      iface br-main inet manual
+          bridge-ports enp16s0
+          bridge-stp off
+          bridge-fd 0
+          bridge-vlan-aware yes
+          bridge-vids 1 10
+          bridge-pvid 1
+
+      # Untagged LAN network (VLAN 1) (DHCP for host desktop)
       auto br-lan
       allow-hotplug br-lan
       iface br-lan inet dhcp
-          bridge-ports {{ lan_iface }}
-          bridge-stp off
-          bridge-fd 0
-          
-      # Make sure the VLAN module is loaded before we touch vlan10
-      pre-up modprobe 8021q
+          vlan-raw-device br-main
+          vlan-id 1
 
-      # SRV VLAN interface (tagged VLAN {{ srv_vlan_id }})
-      auto vlan{{ srv_vlan_id }}
-      iface vlan{{ srv_vlan_id }} inet manual
-          vlan-raw-device {{ lan_iface }}
-
-      # SRV bridge (no IP on host, for Docker containers)
+      # Tagged VLAN {{ srv_vlan_id }} network (no IP on host, for Docker containers)
       auto br-srv
       iface br-srv inet static
+          vlan-raw-device br-main
+          vlan-id 10
+
           address {{ srv_address }}
           # gateway {{ srv_gateway }} # Keep the gateway commented out to not make this the default route
-          bridge-ports vlan{{ srv_vlan_id }}
-          bridge-stp off
-          bridge-fd 0
 
-          # Host must *not* route over br-srv
-          post-up ip route del {{ srv_address | ansible.utils.ipaddr('network/prefix') }} dev br-srv 2>/dev/null || true
-          post-up ip route add {{ srv_address | ansible.utils.ipaddr('network/prefix') }} dev br-srv metric 500
-          post-down ip route del {{ srv_address | ansible.utils.ipaddr('network/prefix') }} dev br-srv || true
+          # Don't add a route for {{ srv_net }} - let it use br-lan's gateway
+          post-up ip route del {{ srv_net }} dev br-srv 2>/dev/null || true
 
-          # Prevent host DNS / multicast / Spotify fallback via br-srv
-          post-up ip rule add iif br-srv lookup 100 unreachable
-          post-down ip rule del iif br-srv lookup 100 unreachable || true
+          # Block host from routing anything through br-srv
+          post-up iptables -I OUTPUT -o br-srv -j REJECT
+          post-down iptables -D OUTPUT -o br-srv -j REJECT || true
 
-          post-up ip rule add oif br-srv lookup 100 unreachable
-          post-down ip rule del oif br-srv lookup 100 unreachable || true
-
-          # Optional but strong isolation: no ARP on this bridge
+          # Disable ARP so host doesn't respond on this network
           post-up ip link set dev br-srv arp off
           post-down ip link set dev br-srv arp on
-  register: net_config
+  notify:
+    - reload network
 
-- name: Restart networking if config changed
-  command: ifreload -a
-  when: net_config.changed
-
+# --- Configure network manager ---
+- name: Configure NetworkManager unmanaged devices
+  vars:
+    unmanaged_devices:
+      - "{{ lan_iface }}"
+      - "br-lan"
+      - "br-srv"
+      - "br-main"
+      - "docker0"
+      - "docker*"
+  ansible.builtin.copy:
+    dest: /etc/NetworkManager/conf.d/99-unmanaged-devices.conf
+    content: |
+      # Managed by Ansible – hybrid_network role
+      [keyfile]
+      unmanaged-devices={{ ['interface-name:'] | product(unmanaged_devices) | map('join') | join(';') }}
+  notify:
+    - restart NetworkManager
 
 # --- Verify network connectivity (ping gateway) ---
 - name: Refresh network facts if config changed

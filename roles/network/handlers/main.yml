@@ -1,0 +1,6 @@
+- name: reload network
+  command: ifreload -a
+- name: restart NetworkManager
+  ansible.builtin.systemd:
+    name: NetworkManager
+    state: restarted
