@@ -11,3 +11,8 @@ lan_network_name: lan-net
 srv_address: 10.0.0.2/24
 srv_gateway: 10.0.0.1
 srv_network_name: srv-net
+
+# NetworkManager is having issues detecting connectivity on unmanaged interfaces (br-lan)
+# This leads to apps relying on NetworkManager thinking there is no network connection
+# Thus, we disable NetworkManager entirely and manage all interfaces via /etc/network/interfaces.d
+enable_networkmanager: false

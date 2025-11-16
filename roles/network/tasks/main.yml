@@ -93,6 +93,15 @@
       unmanaged-devices={{ ['interface-name:'] | product(unmanaged_devices) | map('join') | join(';') }}
   notify:
     - restart NetworkManager
+  when: enable_networkmanager
+
+- name: Disable and mask NetworkManager
+  ansible.builtin.systemd:
+    name: NetworkManager
+    state: stopped
+    enabled: false
+    masked: true
+  when: not enable_networkmanager
 
 # --- Verify network connectivity (ping gateway) ---
 - name: Refresh network facts if config changed
