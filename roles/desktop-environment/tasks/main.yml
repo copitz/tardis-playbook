@@ -4,6 +4,7 @@
       - kde-plasma-desktop
       - sddm
       - vbetool
+      - plasma-discover-backend-flatpak
     state: present
     update_cache: yes
 

@@ -29,11 +29,28 @@ if [ "$1" == "--list" ]; then
   exit 0
 fi
 
-# If args are given, run only those tags
-if [ $# -gt 0 ]; then
-  TAGS="$*"
-  ansible-playbook site.yml -i inventory --ask-become-pass --tags "$TAGS"
+# Handle dry-run flag
+FLAGS=()
+TAGS=()
+for arg in "$@"; do
+  if [ "$arg" == "--dry-run" ] || [ "$arg" == "-d" ]; then
+    FLAGS+=("--check")
+  elif [[ "$arg" == -* ]]; then
+    echo "Error: Unknown flag '$arg'" >&2
+    exit 1
+  else
+    TAGS+=("$arg")
+  fi
+done
+
+# If tags are given, run only those tags
+if [ ${#TAGS[@]} -gt 0 ]; then
+  TAGS_CSV=$(IFS=,; echo "${TAGS[*]}")
+  FLAGS+=("--tags" "$TAGS_CSV")
+  
 else
   # By default, skip manual roles
-  ansible-playbook site.yml -i inventory --ask-become-pass --skip-tags manual
+  FLAGS+=("--skip-tags" "manual")
 fi
+
+ansible-playbook site.yml -i inventory --ask-become-pass "${FLAGS[@]}"

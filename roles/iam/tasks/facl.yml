@@ -1,0 +1,73 @@
+---
+
+- name: Ensure ACL package (containing setfacl)
+  ansible.builtin.apt:
+    name: acl
+    state: present
+
+- name: Extract user/group for each share
+  set_fact:
+    share_meta: "{{ share_meta | default([]) + [ {
+      'path': item.path,
+      'user':  lookup('ansible.builtin.pipe', 'stat -c %U ' + item.path | quote),
+      'group': lookup('ansible.builtin.pipe', 'stat -c %G ' + item.path | quote)
+    } ] }}"
+  loop: "{{ iam_shares }}"
+  loop_control:
+    label: "{{ item.path }}"
+
+- name: Check for proper ownership of the shares
+  assert:
+    that: item.user != "root" and item.group != "root"
+    fail_msg: "{{item.path}} must be owned by a non root user/group"
+    success_msg: "{{ item.path }} -> {{ item.user }}:{{ item.group }}"
+    quiet: true
+  loop: "{{ share_meta }}"
+  loop_control:
+    label: "{{ item.path }} -> {{ item.user }}:{{ item.group }}"
+
+- name: Set the default ACL for owning user and group of each share
+  acl:
+    path: "{{ item.0.path }}"
+    entity: "{{ item.0[item.1] }}"
+    etype: "{{ item.1 }}"
+    permissions: "rwx"
+    recursive: true
+    default: true
+    state: present
+  loop: "{{ share_meta | product(['group', 'user'])}}"
+  loop_control:
+    label: "{{ item.0.path }} -> {{ item.1 }}:{{ item.0[item.1] }}:rwx"
+
+# Each acl action is run twice per rule - once with default and once without.
+# This is due to the fact, that concrete rules cannot be applied together with the defaults
+- name: Apply ACL rules
+  acl:
+    path: "{{ item.path }}"
+    entity: "{{ item.id }}"
+    etype: "{{ item.type }}"
+    permissions: "{{ item.permissions }}"
+    recursive: true
+    default: "{{ item.default }}"
+    state: present
+  loop: |
+      {% filter from_yaml %}
+      {% for share in iam_shares %}
+      {% for type in ['user', 'group'] %}
+      {% for entity, perms in share[type + 's'] | default({}) | items() %}
+      {% if lookup('vars', 'iam_' + type + 's')[entity] %}
+      {% for default in [true, false] %}
+      - path: "{{ share.path }}"
+        id: {{ entity }}
+        name: "{{ lookup('vars', 'iam_' + type + 's')[entity].name }}"
+        type: "{{ type }}"
+        permissions: "{{ perms }}"
+        default: {{ default }}
+      {% endfor %}
+      {% endif %}
+      {% endfor %}
+      {% endfor %}
+      {% endfor %}
+      {% endfilter %}
+  loop_control:
+    label: "{{ item.path }} → {{item.type}}:{{ item.name }}:{{item.permissions}} (default ACL: {{ item.default }})"

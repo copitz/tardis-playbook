@@ -1,0 +1,50 @@
+---
+# Create groups and users, set homes, optional Samba and FACL handling.
+
+- name: Create groups
+  ansible.builtin.group:
+    name: "{{ item.value }}"
+    gid: "{{ item.key }}"
+    state: present
+  loop: "{{ iam_groups | dict2items }}"
+  loop_control:
+    label: "{{ item.value }} (GID {{ item.key }})"
+
+- name: Create users
+  ansible.builtin.user:
+    name: "{{ item.value.name }}"
+    uid: "{{ item.key }}"
+    shell: "{{ item.value.shell | default(false) | ternary('/bin/bash', '/usr/sbin/nologin') }}"
+    group: "{{ item.value.group }}"
+    groups: "{{ item.value.groups | default([]) }}"
+    createhome: "{{ item.value.home | default(false) }}"
+    home: "{{ item.value.home | default(false) | ternary('/home/' + item.value.name, '/nonexistent') }}"
+    comment: "{{ item.value.comment | default('') }}"
+  loop: "{{ iam_users | dict2items }}"
+  loop_control:
+    label: "{{ item.value.name }} (UID {{ item.key }})"
+
+- name: Ensure home directory existence and permissions (for users with real homes)
+  ansible.builtin.file:
+    path: "/home/{{ item.user }}"
+    owner: "{{ item.user }}"
+    group: "{{ item.group }}"
+    mode: "{{ item.mode }}"
+    state: directory
+  loop: "{{ iam_users | selectattr('home', True) | dict2items }}"
+  loop: |
+      {% filter from_yaml %}
+      {% for id, user in iam_users.items() %}
+      {% if user.home | default(false) %}
+      - mode: {{ user.home_mode | default(700) }}
+        user: "{{ user.name}}"
+        group: "{{ user.group}}"
+      {% endif %}
+      {% endfor %}
+      {% endfilter %}
+  loop_control:
+    label: "/home/{{ item.user }}"
+
+- name: Include FACL setup for shares
+  include_tasks: facl.yml
+  when: iam_shares is defined and iam_shares | length > 0

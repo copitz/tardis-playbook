@@ -1,0 +1,75 @@
+---
+# Inline IAM variables. Edit these directly in the role as requested.
+# This role is project-specific; variables live here (iam_ prefix).
+
+# Groups by GID
+iam_groups:
+  1000: copitz
+  1001: lilla
+  1002: family
+  1100: apps
+
+# Users by UID. Provide name and groups. Optional: comment, shell (default false), home (default false).
+# home: true -> /home/{{name}}, false -> /nonexistent
+# shell: true -> /bin/bash (login); false -> /usr/sbin/nologin (service account)
+iam_users:
+  1000:
+    name: copitz
+    group: copitz
+    groups: ["cdrom", "floppy", "audio", "dip", "video", "plugdev", "users", "netdev"]
+    shell: true
+    home: true
+    comment: "copitz"
+  1001:
+    name: lilla
+    group: lilla
+    comment: "lilla"
+  1100:
+    name: app-any
+    group: apps
+    comment: "Any app without dedicated user"
+  1101:
+    name: app-immich
+    group: apps
+  1200:
+    name: app-any-arr
+    group: apps
+    comment: "Any arr app without dedicated user"
+  1201:
+    name: app-sabnzbd
+    group: apps
+  1202:
+    name: app-prowlarr
+    group: apps
+  1203:
+    name: app-radarr
+    group: apps
+  1204:
+    name: app-sonarr
+    group: apps
+  1205:
+    name: app-lidarr
+    group: apps
+
+nas_home: "/tank/assets"
+
+iam_shares:
+  - path: "{{nas_home}}/copitz/Fotos"
+    users:
+      1101: "rw-"
+
+  - path: "{{nas_home}}/lilla/Fotos"
+    users:
+      1101: "rw-"
+
+  - path: "{{nas_home}}/share/immich"
+    users:
+      1101: "rwx"
+
+  - path: "{{nas_home}}/share/media/movies"
+    users:
+      1203: "rwx"
+
+  - path: "{{nas_home}}/share/media/music"
+    users:
+      1205: "rwx"

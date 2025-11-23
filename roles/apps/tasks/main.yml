@@ -1,0 +1,36 @@
+- name: Add VSCode APT repository
+  ansible.builtin.deb822_repository:
+    name: vscode
+    types: [deb]
+    uris: "https://packages.microsoft.com/repos/code"
+    signed_by: "https://packages.microsoft.com/keys/microsoft.asc"
+    suites: [stable]
+    components: [main]
+    state: present
+    enabled: yes
+
+- name: Install general requirements
+  ansible.builtin.apt:
+    name:
+      - git
+      - flatpak
+      - ark
+      - inkscape
+      - kalk
+      - code
+    update_cache: true
+    state: present
+
+- name: Ensure Flathub remote is added
+  ansible.builtin.command: >
+    flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+  args:
+    creates: /var/lib/flatpak/repo/flathub.trustedkeys.gpg
+
+- name: Install apps from flathub
+  ansible.builtin.flatpak:
+    name:
+      - org.blender.Blender
+      - com.spotify.Client
+      - com.visualstudio.code
+    state: present

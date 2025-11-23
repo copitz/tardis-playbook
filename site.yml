@@ -5,8 +5,10 @@
   environment:
     PATH: "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
   roles:
-    - role: general
-      tags: [general]
+    - role: iam
+      tags: [iam]
+    - role: apps
+      tags: [apps]
     - role: desktop-environment
       tags: [de]
     - role: basic-security
