@@ -54,21 +54,21 @@
           LIBVA_DRIVER_NAME=radeonsi
         mode: "0644"
 
-    # --- Desktop GPU Verification ---
+# --- Desktop GPU Verification ---
 
-    - name: Run glxinfo -B
-      command: glxinfo -B
-      register: gpu_glxinfo
-      changed_when: false
-      failed_when: false
+- name: Run glxinfo -B
+  command: glxinfo -B
+  register: gpu_glxinfo
+  changed_when: false
+  failed_when: false
 
-    - name: Show OpenGL renderer string
-      debug:
-        msg: "{{ gpu_glxinfo.stdout_lines | select('search','OpenGL renderer string') | list }}"
+- name: Show OpenGL renderer string
+  debug:
+    msg: "{{ gpu_glxinfo.stdout_lines | select('search','OpenGL renderer string') | list }}"
 
-    - name: Verify Mesa/AMDGPU is used for desktop (X11/Wayland)
-      assert:
-        that:
-          - "'AMD' in gpu_glxinfo.stdout"
-        fail_msg: "Desktop rendering is NOT using AMD GPU (check Mesa alternatives + /etc/environment.d/10-radeon.conf)"
-        success_msg: "Desktop rendering verified: AMD GPU is in use for X11/Wayland"
+- name: Verify Mesa/AMDGPU is used for desktop (X11/Wayland)
+  assert:
+    that:
+      - "'AMD' in gpu_glxinfo.stdout"
+    fail_msg: "Desktop rendering is NOT using AMD GPU (check Mesa alternatives + /etc/environment.d/10-radeon.conf)"
+    success_msg: "Desktop rendering verified: AMD GPU is in use for X11/Wayland"
