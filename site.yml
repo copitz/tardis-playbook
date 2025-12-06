@@ -5,6 +5,8 @@
   environment:
     PATH: "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
   roles:
+    - role: lvm
+      tags: [lvm]
     - role: iam
       tags: [iam]
     - role: apps
@@ -21,11 +23,6 @@
       tags: [zfs]
     - docker
     - role: drivers
-      vars:
-        verify_desktop_user: copitz
       tags: [drivers]
     - role: network
       tags: [net]
-    - role: nvidia-container-toolkit
-      vars:
-        nvidia_container_toolkit_version: "1.17.8-1"

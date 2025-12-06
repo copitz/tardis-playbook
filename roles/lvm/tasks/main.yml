@@ -1,0 +1,67 @@
+- name: Create the LVM volume group
+  community.general.lvg:
+    vg: vg_tardis
+    pvs: /dev/nvme0n1p3
+    pesize: 4M
+    state: active
+
+- name: Create configuration
+  ansible.builtin.set_fact:
+    lvs:
+      - name: lv_root
+        size: 55.88G
+        vg: vg_tardis
+        mount: /
+        fs: ext4
+        opts: "errors=remount-ro"
+        fsck_pass: 1
+      - name: lv_docker
+        size: 20G
+        vg: vg_tardis
+        mount: /var/lib/docker
+        mode: '0710'
+        fs: ext4
+        opts: "defaults,noatime"
+        fsck_pass: 2
+
+- name: Create volume
+  community.general.lvol:
+    vg: "{{ item.vg }}"
+    lv: "{{ item.name }}"
+    size: "{{ item.size }}"
+  loop: "{{ lvs }}"
+  loop_control:
+    label: "{{ item.name }} ({{ item.size }})"
+
+- name: Create filesystem
+  ansible.builtin.filesystem:
+    fstype: "{{ item.fs }}"
+    dev: "/dev/{{ item.vg }}/{{ item.name }}"
+  loop: "{{ lvs }}"
+  ignore_errors: "{{ansible_check_mode}}"
+  loop_control:
+    label: "{{ item.fs }}: /dev/{{ item.vg }}/{{ item.name }}"
+
+- name: Create mount points
+  ansible.builtin.file:
+    path: "{{ item.mount }}"
+    state: directory
+    owner: "{{ item.owner | default('root') }}"
+    group: "{{ item.group | default('root') }}"
+    mode: "{{ item.mode | default('0755') }}"
+  loop: "{{ lvs }}"
+  loop_control:
+    label: "{{ item.mount }}"
+
+- name: Mount logical volumes
+  ansible.builtin.mount:
+    path: "{{ item.mount }}"
+    src: "/dev/{{ item.vg }}/{{ item.name }}"
+    fstype: "{{ item.fs }}"
+    opts: "{{ item.opts | default('defaults') }}"
+    state: "{{ (item.mount == '/') | ternary('present', 'mounted') }}"
+    passno: "{{ item.fsck_pass | default('0') }}"
+  diff: true
+  loop: "{{ lvs }}"
+  loop_control:
+    label: "/dev/{{ item.vg }}/{{ item.name }} -> {{ item.mount }}"
