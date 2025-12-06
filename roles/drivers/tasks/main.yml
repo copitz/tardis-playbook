@@ -1,3 +1,4 @@
 - import_tasks: nvidia-cuda.yml
+- import_tasks: nvidia-ctk.yml
 #Not sure if that is really necessary:
 - import_tasks: amd-radeon.yml

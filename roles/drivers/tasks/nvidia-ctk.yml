@@ -8,12 +8,20 @@
     enabled: yes
 
 - name: Check if nvidia-smi and docker are present
-  ansible.builtin.command: nvidia-smi && docker -v
+  shell: |
+    docker --version >/dev/null 2>&1 && echo -n "d"
+    nvidia-smi >/dev/null 2>&1 && echo -n "n"
   register: nvidia_smi
   changed_when: false
   failed_when: false
 
+- name: Debug nvidia-smi check
+  debug:
+    msg: "nvidia-smi and docker presence: '{{ nvidia_smi.stdout }}'"
+
 - name: Install NVIDIA Container Toolkit and dependencies at fixed version
+  vars:
+    nvidia_container_toolkit_version: "1.18.0-1"
   apt:
     name:
       - "nvidia-container-toolkit={{ nvidia_container_toolkit_version }}"
@@ -22,9 +30,9 @@
       - "libnvidia-container1={{ nvidia_container_toolkit_version }}"
     state: present
     update_cache: yes
-  when: nvidia_smi.rc == 0
+  when: "'dn' in nvidia_smi.stdout"
   register: nvidia_toolkit_result
 
 - name: Configure NVIDIA runtime for Docker
   shell: nvidia-ctk runtime configure --runtime=docker; systemctl restart docker
-  when: nvidia_smi.rc == 0 and nvidia_toolkit_result is changed
+  when: "'dn' in nvidia_smi.stdout and nvidia_toolkit_result is changed"
