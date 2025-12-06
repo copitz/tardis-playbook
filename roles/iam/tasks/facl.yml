@@ -42,14 +42,19 @@
 # Each acl action is run twice per rule - once with default and once without.
 # This is due to the fact, that concrete rules cannot be applied together with the defaults
 - name: Apply ACL rules
-  acl:
-    path: "{{ item.path }}"
-    entity: "{{ item.id }}"
-    etype: "{{ item.type }}"
-    permissions: "{{ item.permissions }}"
-    recursive: true
-    default: "{{ item.default }}"
-    state: present
+  # ansible.posix.acl:
+  #   path: "{{ item.path }}"
+  #   entity: "{{ item.name }}"
+  #   etype: "{{ item.type }}"
+  #   permissions: "{{ item.permissions }}"
+  #   recursive: true
+  #   default: "{{ item.default }}"
+  #   state: present
+  # Replacement for above until https://github.com/ansible-collections/ansible.posix/issues/688 is resolved
+  ansible.builtin.shell: |
+    setfacl {% if item.default %}--default{% endif %} \
+      --modify {{ item.type }}:{{ item.id }}:{{ item.permissions }} \
+      --recursive "{{ item.path }}"
   loop: |
       {% filter from_yaml %}
       {% for share in iam_shares %}

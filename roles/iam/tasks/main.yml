@@ -3,12 +3,12 @@
 
 - name: Create groups
   ansible.builtin.group:
-    name: "{{ item.value }}"
+    name: "{{ item.value.name }}"
     gid: "{{ item.key }}"
     state: present
   loop: "{{ iam_groups | dict2items }}"
   loop_control:
-    label: "{{ item.value }} (GID {{ item.key }})"
+    label: "{{ item.value.name }} (GID {{ item.key }})"
 
 - name: Create users
   ansible.builtin.user:
@@ -31,12 +31,11 @@
     group: "{{ item.group }}"
     mode: "{{ item.mode }}"
     state: directory
-  loop: "{{ iam_users | selectattr('home', True) | dict2items }}"
   loop: |
       {% filter from_yaml %}
       {% for id, user in iam_users.items() %}
       {% if user.home | default(false) %}
-      - mode: {{ user.home_mode | default(700) }}
+      - mode: '{{ user.home_mode | default('0700') }}'
         user: "{{ user.name}}"
         group: "{{ user.group}}"
       {% endif %}

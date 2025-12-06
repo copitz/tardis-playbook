@@ -4,10 +4,14 @@
 
 # Groups by GID
 iam_groups:
-  1000: copitz
-  1001: lilla
-  1002: family
-  1100: apps
+  1000:
+    name: copitz
+  1001:
+    name: lilla
+  1002:
+    name: family
+  1100:
+    name: apps
 
 # Users by UID. Provide name and groups. Optional: comment, shell (default false), home (default false).
 # home: true -> /home/{{name}}, false -> /nonexistent
@@ -16,7 +20,7 @@ iam_users:
   1000:
     name: copitz
     group: copitz
-    groups: ["cdrom", "floppy", "audio", "dip", "video", "plugdev", "users", "netdev"]
+    groups: ["cdrom", "floppy", "audio", "dip", "video", "plugdev", "users", "netdev", "docker"]
     shell: true
     home: true
     comment: "copitz"
@@ -30,6 +34,9 @@ iam_users:
     comment: "Any app without dedicated user"
   1101:
     name: app-immich
+    group: apps
+  1102:
+    name: app-jellyfin
     group: apps
   1200:
     name: app-any-arr
@@ -56,11 +63,11 @@ nas_home: "/tank/assets"
 iam_shares:
   - path: "{{nas_home}}/copitz/Fotos"
     users:
-      1101: "rw-"
+      1101: "rwx"
 
   - path: "{{nas_home}}/lilla/Fotos"
     users:
-      1101: "rw-"
+      1101: "rwx"
 
   - path: "{{nas_home}}/share/immich"
     users:
@@ -68,8 +75,15 @@ iam_shares:
 
   - path: "{{nas_home}}/share/media/movies"
     users:
+      1102: "rwx"
       1203: "rwx"
-
+  - path: "{{nas_home}}/share/media/music-videos"
+    users:
+      1102: "rwx"
   - path: "{{nas_home}}/share/media/music"
     users:
       1205: "rwx"
+  - path: "{{nas_home}}/share/media/series"
+    users:
+      1102: "rwx"
+      1204: "rwx"
