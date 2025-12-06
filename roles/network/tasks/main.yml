@@ -1,145 +1,22 @@
 ---
-# --- Required packages ---
-- name: Install required packages for networking
-  apt:
-    name:
-      - ifupdown2
-      - vlan
-    state: present
-    update_cache: yes
-
-- name: Fix missing file for ifupdown2
-  become: yes
-  ansible.builtin.shell:
-    cmd: mkdir -p /etc/iproute2/rt_tables.d && touch /etc/iproute2/rt_tables.d/ifupdown2_vrf_map.conf
-    creates: /etc/iproute2/rt_tables.d/ifupdown2_vrf_map.conf
-
-# --- Network configuration ---
-
-- name: Ensure /etc/network/interfaces has include directive
-  copy:
-    dest: /etc/network/interfaces
-    content: |
-      source /etc/network/interfaces.d/*
-
-      auto lo
-      iface lo inet loopback
-
-
-- name: Configure LAN + SRV networking
-  vars:
-    srv_net: "{{ srv_address | ansible.utils.ipaddr('network/prefix') }}"
-  copy:
-    dest: /etc/network/interfaces.d/net.cfg
-    content: |
-      # Main physical NIC (no IP, used by bridges/VLANs)
-      auto {{ lan_iface }}
-      allow-hotplug {{ lan_iface }}
-      iface {{ lan_iface }} inet manual
-
-      auto br-main
-      iface br-main inet manual
-          bridge-ports enp16s0
-          bridge-stp off
-          bridge-fd 0
-          bridge-vlan-aware yes
-          bridge-vids 1 10
-          bridge-pvid 1
-
-      # Untagged LAN network (VLAN 1) (DHCP for host desktop)
-      auto br-lan
-      allow-hotplug br-lan
-      iface br-lan inet dhcp
-          vlan-raw-device br-main
-          vlan-id 1
-
-      # Tagged VLAN {{ srv_vlan_id }} network (no IP on host, for Docker containers)
-      auto br-srv
-      iface br-srv inet static
-          vlan-raw-device br-main
-          vlan-id 10
-
-          address {{ srv_address }}
-          # gateway {{ srv_gateway }} # Keep the gateway commented out to not make this the default route
-
-          # Don't add a route for {{ srv_net }} - let it use br-lan's gateway
-          post-up ip route del {{ srv_net }} dev br-srv 2>/dev/null || true
-
-          # Block host from routing anything through br-srv
-          post-up iptables -I OUTPUT -o br-srv -j REJECT
-          post-down iptables -D OUTPUT -o br-srv -j REJECT || true
-
-          # Disable ARP so host doesn't respond on this network
-          post-up ip link set dev br-srv arp off
-          post-down ip link set dev br-srv arp on
-  notify:
-    - reload network
-
-# --- Configure network manager ---
-- name: Configure NetworkManager unmanaged devices
-  vars:
-    unmanaged_devices:
-      - "{{ lan_iface }}"
-      - "br-lan"
-      - "br-srv"
-      - "br-main"
-      - "docker0"
-      - "docker*"
-  ansible.builtin.copy:
-    dest: /etc/NetworkManager/conf.d/99-unmanaged-devices.conf
-    content: |
-      # Managed by Ansible – hybrid_network role
-      [keyfile]
-      unmanaged-devices={{ ['interface-name:'] | product(unmanaged_devices) | map('join') | join(';') }}
-  notify:
-    - restart NetworkManager
-  when: enable_networkmanager
-
-- name: Disable and mask NetworkManager
-  ansible.builtin.systemd:
-    name: NetworkManager
-    state: stopped
-    enabled: false
-    masked: true
-  when: not enable_networkmanager
-
-# --- Verify network connectivity (ping gateway) ---
-- name: Refresh network facts if config changed
-  ansible.builtin.setup:
-    gather_subset:
-      - network
-
-- name: Assert LAN is the default route
-  ansible.builtin.assert:
-    that: ansible_default_ipv4.interface == 'br-lan'
-    success_msg: "LAN is the default route"
-    fail_msg: "LAN is not the default route, current default route is via {{ ansible_default_ipv4.interface }}"
-
-- name: Verify LAN connectivity
-  vars:
-    test_target: "{{ ansible_default_ipv4.gateway }}"
-  ansible.builtin.command:
-    cmd: "ping -I br-lan -c 2 -W 2 {{ test_target }}"
-  register: ping_result
-  changed_when: false
-  failed_when: ping_result.rc != 0
-  retries: 3
-  delay: 2
-  until: ping_result.rc == 0
+- import_tasks: ifupdown.yml
+- import_tasks: networkd.yml
+- import_tasks: nm.yml
+- import_tasks: verify.yml
 
 # --- Docker networks ---
 - name: "Ensure Docker SRV network exists and matches expected config"
   import_tasks: docker.yml
   vars:
-    name: "{{ srv_network_name }}"
+    network: "{{ srv_network_name }}"
     parent: br-srv
-    subnet: "{{ srv_address | ansible.utils.ipaddr('network/prefix') }}"
+    subnet: "{{ srv_subnet }}"
     gateway: "{{ srv_gateway }}"
 
 - name: "Ensure Docker LAN network exists and matches expected config"
   import_tasks: docker.yml    
   vars:
-    name: "{{ lan_network_name }}"
+    network: "{{ lan_network_name }}"
     parent: br-lan
-    subnet: "{{ ansible_default_ipv4.network ~ '/' ~ ansible_default_ipv4.prefix }}"
-    gateway: "{{ ansible_default_ipv4.gateway }}"
+    subnet: "{{ ansible_facts['default_ipv4'].network ~ '/' ~ ansible_facts['default_ipv4'].prefix }}"
+    gateway: "{{ ansible_facts['default_ipv4'].gateway }}"

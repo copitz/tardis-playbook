@@ -1,0 +1,10 @@
+# Disable and remove ifupdown2 and ifupdown to prevent conflicts
+
+- name: Remove ifupdown2 and ifupdown packages
+  apt:
+    name:
+      - ifupdown2
+      - ifupdown
+    state: absent
+    purge: yes
+    autoremove: yes

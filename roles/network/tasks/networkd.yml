@@ -1,0 +1,148 @@
+---
+# - name: Ensure systemd-networkd & resolved are installed
+#   apt:
+#     name:
+#       - systemd
+#       - systemd-networkd
+#       - systemd-resolved
+#       - ethtool
+#     state: present
+#     update_cache: yes
+
+# ----------------------------------------------------------------------
+# SYSTEMD-NETWORKD FILE DEFINITIONS
+# ----------------------------------------------------------------------
+
+- name: Define desired systemd-networkd config files
+  set_fact:
+    networkd_files:
+      - name: "10-{{ lan_iface }}.network"
+        content: |
+          [Match]
+          Name={{ lan_iface }}
+
+          [Network]
+          Bridge=br-lan
+          VLAN=vlan{{ srv_vlan_id }}
+
+      - name: "20-br-lan.netdev"
+        content: |
+          [NetDev]
+          Name=br-lan
+          Kind=bridge
+
+      - name: "20-br-lan.network"
+        content: |
+          [Match]
+          Name=br-lan
+
+          [Network]
+          DHCP=yes
+          IPv6AcceptRA=yes
+
+          [Link]
+          RequiredForOnline=routable
+
+      - name: "30-vlan-srv.netdev"
+        content: |
+          [NetDev]
+          Name=vlan{{ srv_vlan_id }}
+          Kind=vlan
+
+          [VLAN]
+          Id={{ srv_vlan_id }}
+
+      - name: "30-vlan-srv.network"
+        content: |
+          [Match]
+          Name=vlan{{ srv_vlan_id }}
+
+          [Network]
+          Bridge=br-srv
+
+      - name: "40-br-srv.netdev"
+        content: |
+          [NetDev]
+          Name=br-srv
+          Kind=bridge
+
+      - name: "40-br-srv.network"
+        content: |
+          [Match]
+          Name=br-srv
+
+          [Link]
+          ARP=false
+
+          [Network]
+          Address={{ srv_host_address }}
+          IPv6AcceptRA=no
+          
+          [Link]
+          RequiredForOnline=routable
+
+# ----------------------------------------------------------------------
+# DEPLOY THE FILES
+# ----------------------------------------------------------------------
+
+- name: Deploy systemd-networkd configuration files
+  copy:
+    dest: "/etc/systemd/network/{{ item.name }}"
+    content: "{{ item.content }}"
+    mode: "0644"
+  loop: "{{ networkd_files }}"
+  loop_control:
+    label: "{{ item.name }}"
+  register: written_networkd_files
+
+# ----------------------------------------------------------------------
+# REMOVE ANY OTHER NETWORKD FILES
+# ----------------------------------------------------------------------
+
+- name: Find existing systemd-networkd files
+  find:
+    paths: /etc/systemd/network
+    file_type: file
+  register: existing_networkd_files
+
+- name: Remove unmanaged networkd files
+  file:
+    path: "{{ item.path }}"
+    state: absent
+  loop: "{{ existing_networkd_files.files }}"
+  when: (item.path | basename) not in (networkd_files | map(attribute='name') | list)
+  loop_control:
+    label: "{{ item.path | basename }}"
+  register: removed_networkd_files
+
+# ----------------------------------------------------------------------
+# RELOAD NETWORKD ONCE IF ANYTHING CHANGED
+# ----------------------------------------------------------------------
+
+- name: Reload systemd-networkd if any changes occurred
+  command: networkctl reload
+  when: |
+    written_networkd_files.changed
+    or removed_networkd_files.changed
+
+# ----------------------------------------------------------------------
+# ENABLE systemd-networkd + resolved
+# ----------------------------------------------------------------------
+
+- name: Enable systemd-networkd
+  systemd:
+    name: systemd-networkd
+    enabled: true
+
+#- name: Enable systemd-resolved
+#  systemd:
+#    name: systemd-resolved
+#    enabled: true
+
+# Optionally ensure resolv.conf uses resolved
+# Uncomment if needed
+# - name: Link resolv.conf to systemd-resolved
+#   file:
+#     src: /run/systemd/resolve/stub-resolv.conf
+#     dest: /etc/resolv.conf
+#     state: link

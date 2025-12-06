@@ -8,11 +8,13 @@ srv_vlan_id: 10
 lan_network_name: lan-net
 
 # SRV details
-srv_address: 10.0.0.2/24
+srv_host_address: 10.0.0.2/32 # We use a /32 instead of /24 to route everything else to SRV via LAN gateway
+                              # (otherwise docker containers on SRV will not be reachable from host)
+srv_subnet: 10.0.0.0/24
 srv_gateway: 10.0.0.1
 srv_network_name: srv-net
 
 # NetworkManager is having issues detecting connectivity on unmanaged interfaces (br-lan)
 # This leads to apps relying on NetworkManager thinking there is no network connection
-# Thus, we disable NetworkManager entirely and manage all interfaces via /etc/network/interfaces.d
+# Thus, we disable NetworkManager entirely and manage all interfaces via networkd
 enable_networkmanager: false
