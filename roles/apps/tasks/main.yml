@@ -15,9 +15,15 @@
       - git
       - flatpak
       - ark
-      - inkscape
       - kalk
       - code
+      - cups
+      - printer-driver-cups-pdf
+      - okular
+      - vlc
+      - calibre
+      - inkscape
+      - okular
     update_cache: true
     state: present
 
@@ -32,5 +38,5 @@
     name:
       - org.blender.Blender
       - com.spotify.Client
-      - com.visualstudio.code
+      - calibre.calibre
     state: present
