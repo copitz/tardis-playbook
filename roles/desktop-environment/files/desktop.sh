@@ -64,7 +64,9 @@ cmd_stop() {
   log "Stopping SDDM"
   systemctl stop sddm.service
   sleep 2
+  log "Changing to TTY $RETURN_TO_TTY"
   chvt $RETURN_TO_TTY
+  sleep 2
   /usr/local/bin/tty-blank $RETURN_TO_TTY & disown
 }
 
