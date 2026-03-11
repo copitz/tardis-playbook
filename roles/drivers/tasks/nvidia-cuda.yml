@@ -40,6 +40,9 @@
     state: present
   register: cuda_keyring
 
+#TODO: Remove potentially still existing older source list entries for CUDA
+#      (occurred when Debian 13 repos got available at nvidia after they weren't in the first place)
+
 - name: Reboot if CUDA keyring was just installed
   ansible.builtin.reboot:
     msg: "Rebooting after installing NVIDIA CUDA keyring"
