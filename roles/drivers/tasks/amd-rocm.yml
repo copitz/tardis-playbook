@@ -1,0 +1,2 @@
+# AMD ROCm Drivers would be needed for GPU support in blender, however I didn't have the need yet
+#  Here's an example for a playbook: https://dev.arvados.org/projects/arvados/repository/arvados/revisions/main/entry/tools/ansible/roles/compute_amd_rocm/tasks/main.yml
