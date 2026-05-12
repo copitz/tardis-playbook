@@ -1,20 +1,32 @@
 # Physical NIC for LAN + SRV VLAN
 lan_iface: enp16s0
 
-# VLAN for SRV traffic
-srv_vlan_id: 10
-
 # LAN details
-lan_network_name: lan-net
+lan_docker_network_name: lan-net
+lan_docker_network_driver: ipvlan
+lan_docker_network_ip_range_prefix: 27 # 192.168.11.0/27 = 192.168.11.0 - 192.168.11.31
 
 # SRV details
-srv_host_address: 10.0.0.2/32 # We use a /32 instead of /24 to route everything else to SRV via LAN gateway
-                              # (otherwise docker containers on SRV will not be reachable from host)
+srv_vlan_id: 10
 srv_subnet: 10.0.0.0/24
 srv_gateway: 10.0.0.1
-srv_network_name: srv-net
+srv_docker_network_name: srv-net
+srv_docker_network_driver: ipvlan
+srv_docker_network_ip_range_prefix: 32 # 10.0.0.0/32 = 10.0.0.0 - 10.0.0.0 --> Disable Docker IPAM assigning IPs from the pool, we will assign static IPs to containers
+
+# IOT details
+iot_vlan_id: 20
+iot_subnet: 10.0.1.0/24
+iot_gateway: 10.0.1.1
+iot_docker_network_name: iot-net
+iot_docker_network_driver: ipvlan
+iot_docker_network_ip_range_prefix: 27 # 10.0.1.0/27 = 10.0.1.0 - 10.0.1.31
 
 # NetworkManager is having issues detecting connectivity on unmanaged interfaces (br-lan)
 # This leads to apps relying on NetworkManager thinking there is no network connection
 # Thus, we disable NetworkManager entirely and manage all interfaces via networkd
 enable_networkmanager: false
+
+# Docker daemon network related settings
+docker_address_pool_base: "172.20.0.0/16"
+docker_address_pool_size: 24

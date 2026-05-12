@@ -1,0 +1,18 @@
+- name: Read existing docker daemon config
+  slurp:
+    src: /etc/docker/daemon.json
+  register: docker_daemon_raw
+  failed_when: false
+
+- name: Patch docker daemon config
+  copy:
+    dest: /etc/docker/daemon.json
+    content: "{{ existing | combine(patch) | to_nice_json }}\n"
+    mode: "0644"
+  vars:
+    existing: "{{ docker_daemon_raw.content | default('e30=') | b64decode | from_json }}" # The e30= is base64 for {}
+    patch:
+      default-address-pools:
+        - base: "{{ docker_address_pool_base }}"
+          size: "{{ docker_address_pool_size }}"
+  notify: restart docker

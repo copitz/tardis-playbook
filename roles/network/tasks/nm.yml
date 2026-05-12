@@ -6,6 +6,7 @@
       - "{{ lan_iface }}"
       - "br-lan"
       - "br-srv"
+      - "br-iot"
       - "br-main"
       - "docker0"
       - "docker*"

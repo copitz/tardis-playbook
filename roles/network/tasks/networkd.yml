@@ -24,6 +24,7 @@
           [Network]
           Bridge=br-lan
           VLAN=vlan{{ srv_vlan_id }}
+          VLAN=vlan{{ iot_vlan_id }}
 
       - name: "20-br-lan.netdev"
         content: |
@@ -43,43 +44,53 @@
           [Link]
           RequiredForOnline=routable
 
-      - name: "30-vlan-srv.netdev"
+- name: Add VLAN networkd file definitions
+  vars:
+    vlans:
+      - name: srv
+        id: "{{ srv_vlan_id }}"
+        bridge: br-srv
+        host_address: "{{ srv_host_address }}"
+      - name: iot
+        id: "{{ iot_vlan_id }}"
+        bridge: br-iot
+        host_address: "{{ iot_host_address }}"
+    vlan_files: |
+      {% for vlan in vlans %}
+      {% set bridge = vlan.bridge %}
+      {% set id = vlan.id %}
+      - name: "30-vlan-{{ vlan.name }}.netdev"
         content: |
           [NetDev]
-          Name=vlan{{ srv_vlan_id }}
+          Name=vlan{{ id }}
           Kind=vlan
 
           [VLAN]
-          Id={{ srv_vlan_id }}
-
-      - name: "30-vlan-srv.network"
+          Id={{ id }}
+      - name: "30-vlan-{{ vlan.name }}.network"
         content: |
           [Match]
-          Name=vlan{{ srv_vlan_id }}
+          Name=vlan{{ id }}
 
           [Network]
-          Bridge=br-srv
-
-      - name: "40-br-srv.netdev"
+          Bridge={{ bridge }}
+      - name: "40-{{ bridge }}.netdev"
         content: |
           [NetDev]
-          Name=br-srv
+          Name={{ bridge }}
           Kind=bridge
-
-      - name: "40-br-srv.network"
+      - name: "40-{{ bridge }}.network"
         content: |
           [Match]
-          Name=br-srv
-
-          [Link]
-          ARP=false
+          Name={{ bridge }}
 
           [Network]
-          Address={{ srv_host_address }}
-          IPv6AcceptRA=no
-          
-          [Link]
-          RequiredForOnline=routable
+          # No IP for host on bridge, only for containers.
+          # This forces host to route all traffic to containers via the LAN gateway,
+          # which is what we want, so that host is just another client on the LAN
+      {% endfor %}
+  set_fact:
+    networkd_files: "{{ networkd_files + (vlan_files | from_yaml) }}"
 
 # ----------------------------------------------------------------------
 # DEPLOY THE FILES

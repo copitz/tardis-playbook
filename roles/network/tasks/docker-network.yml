@@ -15,27 +15,15 @@
     docker_net_inspect: "{{ docker_net_inspect_raw.stdout | from_json }}"
   when: docker_net_exists
 
-- name: "docker/{{ network }}: Assert subnet matches expected"
+- name: "docker/{{ network }}: Assert config matches expected"
   vars:
-    existing: "{{ docker_net_inspect[0].IPAM.Config[0].Subnet }}"
+    ipam: "{{ (docker_net_inspect_raw.stdout | from_json)[0].IPAM.Config[0] }}"
   assert:
     that:
-      - existing == subnet
-    fail_msg: >
-      Docker network {{ network }} exists but subnet is {{ existing }},
-      expected {{ subnet }}.
-    success_msg: All ok
-  when: docker_net_exists
-
-- name: "docker/{{ network }}: Assert gateway matches expected"
-  vars:
-    existing: "{{ docker_net_inspect[0].IPAM.Config[0].Gateway }}"
-  assert:
-    that:
-      - existing == gateway
-    fail_msg: >
-      Docker network {{ network }} exists but gateway is {{ existing }},
-      expected {{ gateway }}.
+      - ipam.Subnet == subnet
+      - ipam.Gateway == gateway
+      - ipam.IPRange is defined and ipam.IPRange == ip_range
+    fail_msg: "Docker network {{ network }} exists but config differs - please remove or update it manually"
     success_msg: All ok
   when: docker_net_exists
 
@@ -44,6 +32,7 @@
     docker network create -d {{ driver | default('ipvlan') }}
     --subnet={{ subnet }}
     --gateway={{ gateway }}
+    --ip-range {{ ip_range }}
     -o parent={{ parent }}
     {{ network }}
   when: not docker_net_exists
