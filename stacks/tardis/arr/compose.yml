@@ -1,0 +1,132 @@
+services:
+  wireguard:
+    image: lscr.io/linuxserver/wireguard
+    environment:
+      - PUID=1200
+      - PGID=1100
+      - TZ=Europe/Berlin
+    cap_add:
+      - NET_ADMIN
+      - SYS_MODULE
+    sysctls:
+      - net.ipv4.conf.all.src_valid_mark=1
+      - net.ipv6.conf.all.disable_ipv6=1
+    dns:
+      - 1.1.1.1
+    volumes:
+      - ${STACKS_DATA_DIR:?}/arr/wireguard:/config
+      - /lib/modules:/lib/modules # Don't touch this unless you know what you're doing!
+    restart: unless-stopped
+    networks:
+      wg_wan:
+        ipv4_address: 10.0.2.10
+        interface_name: wan0
+      traefik:
+      arr:
+    labels:
+      - "traefik.enable=true"
+      # whoami
+      - "traefik.http.routers.whoamiarr.rule=Host(`whoamiarr.c12z.de`)"
+      - "traefik.http.routers.whoamiarr.entrypoints=https"
+      - "traefik.http.routers.whoamiarr.service=whoamiarr" # This is required with multiple services per container
+      - "traefik.http.services.whoamiarr.loadbalancer.server.port=80"
+      # sabnzbd
+      - "traefik.http.routers.sabnzbd.rule=Host(`sabnzbd.c12z.de`)"
+      - "traefik.http.routers.sabnzbd.entrypoints=https"
+      - "traefik.http.routers.sabnzbd.service=sabnzbd"
+      - "traefik.http.services.sabnzbd.loadbalancer.server.port=8080"
+      # prowlarr
+      - "traefik.http.routers.prowlarr.rule=Host(`prowlarr.c12z.de`)"
+      - "traefik.http.routers.prowlarr.entrypoints=https"
+      - "traefik.http.routers.prowlarr.service=prowlarr"
+      - "traefik.http.services.prowlarr.loadbalancer.server.port=9696"
+      # radarr
+      - "traefik.http.routers.radarr.rule=Host(`radarr.c12z.de`)"
+      - "traefik.http.routers.radarr.entrypoints=https"
+      - "traefik.http.routers.radarr.service=radarr"
+      - "traefik.http.services.radarr.loadbalancer.server.port=7878"
+      # jellyseerr
+      - "traefik.http.routers.jellyseerr.rule=Host(`jellywish.c12z.de`)"
+      - "traefik.http.routers.jellyseerr.entrypoints=https"
+      - "traefik.http.routers.jellyseerr.service=jellyseerr"
+      - "traefik.http.services.jellyseerr.loadbalancer.server.port=5055"
+
+  whoami:
+    image: traefik/whoami
+    depends_on:
+      - wireguard
+    network_mode: "service:wireguard"
+
+  jellyseerr:
+    image: fallenbagel/jellyseerr:latest
+    environment:
+      - PUID=1200
+      - PGID=1100
+      - TZ=Europe/Berlin
+    volumes:
+      - ${STACKS_DATA_DIR:?}/arr/jellyseerr:/app/config
+    depends_on:
+      - wireguard
+    network_mode: "service:wireguard"
+    restart: unless-stopped
+
+  sabnzbd:
+    image: lscr.io/linuxserver/sabnzbd
+    environment:
+      - PUID=1201
+      - PGID=1100
+      - TZ=Europe/Berlin
+    volumes:
+      - ${STACKS_DATA_DIR:?}/arr/sabnzbd:/config
+      - /tank/assets/share/media:/data
+    depends_on:
+      - wireguard
+    network_mode: "service:wireguard"
+    restart: unless-stopped
+
+  prowlarr:
+    image: lscr.io/linuxserver/prowlarr
+    environment:
+      - PUID=1202
+      - PGID=1100
+      - TZ=Europe/Berlin
+    volumes:
+      - ${STACKS_DATA_DIR:?}/arr/prowlarr:/config
+    depends_on:
+      - wireguard
+    network_mode: "service:wireguard"
+    restart: unless-stopped
+
+  radarr:
+    image: lscr.io/linuxserver/radarr
+    environment:
+      - PUID=1203
+      - PGID=1100
+      - TZ=Europe/Berlin
+    volumes:
+      - ${STACKS_DATA_DIR:?}/arr/radarr:/config
+      - /tank/assets/share/media:/data
+    depends_on:
+      - wireguard
+    network_mode: "service:wireguard"
+    restart: unless-stopped
+
+networks:
+  traefik:
+    external: true
+  arr:
+    internal: true
+    name: arr
+    ipam:
+      driver: default
+      config:
+        - subnet: 10.0.3.0/24
+          ip_range: 10.0.3.100/30
+          gateway: 10.0.3.1
+  wg_wan:
+    driver: bridge
+    ipam:
+      driver: default
+      config:
+        - subnet: 10.0.2.0/24
+          gateway: 10.0.2.1

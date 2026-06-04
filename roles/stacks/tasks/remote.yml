@@ -1,0 +1,126 @@
+---
+
+- name: Find local stack directories
+  command: bash -lc 'if [ -d """{{ playbook_dir }}/stacks/{{ inventory_hostname }}""" ]; then cd """{{ playbook_dir }}/stacks/{{ inventory_hostname }}""" && find . -maxdepth 1 -mindepth 1 -type d -printf "%f\n" | sort; else echo ""; fi'
+  delegate_to: localhost
+  register: local_stack_dirs
+  changed_when: false
+  failed_when: false
+
+- name: Find remote stack directories
+  command: bash -lc 'cd /opt/stacks && find . -maxdepth 1 -mindepth 1 -type d -printf "%f\n" | sort'
+  register: remote_stack_dirs
+  changed_when: false
+  failed_when: false
+
+- name: Compute stacks deleted locally but still present remotely
+  set_fact:
+    stacks_removed: >-
+      {{ (remote_stack_dirs.stdout_lines | default([]))
+         | difference(local_stack_dirs.stdout_lines | default([]))
+         | list }}
+  when:
+    - local_stack_dirs is defined
+    - remote_stack_dirs is defined
+
+- name: Shutdown and remove remote stacks deleted locally
+  block:
+    - name: Stop deleted stack containers
+      command: /usr/local/bin/stacks "{{ item }}" down
+      register: stack_down
+      failed_when: false
+      changed_when: stack_down.rc == 0
+
+    - name: Remove deleted stack directory
+      file:
+        path: "/opt/stacks/{{ item }}"
+        state: absent
+  loop: "{{ stacks_removed }}"
+  when:
+    - stacks_removed is defined
+    - stacks_removed | length > 0
+
+- name: Dry-run push to detect changed stacks
+  ansible.posix.synchronize:
+    src: "{{ playbook_dir }}/stacks/{{ inventory_hostname }}/"
+    dest: /opt/stacks
+    mode: push
+    archive: yes
+    recursive: yes
+    rsync_opts:
+      - --dry-run
+      - --itemize-changes
+  delegate_to: localhost
+  register: stacks_push_dry
+  changed_when: false
+  failed_when: false
+
+- name: Set list of changed stacks and detect .env changes from dry-run
+  set_fact:
+    changed_stacks: >-
+      {{ stacks_push_dry.stdout_lines
+         | map('regex_search', 'stacks/{{ inventory_hostname }}/([^/]+)')
+         | select('truthy')
+         | map('regex_replace', 'stacks/{{ inventory_hostname }}/([^/]+).*', '\\\\1')
+         | unique
+         | list }}
+  when: stacks_push_dry is defined
+
+- name: Force update all stacks when env generation changed
+  set_fact:
+    changed_stacks: "{{ local_stack_dirs.stdout_lines | default([]) }}"
+  when:
+    - force_update_all
+    - remote_stack_dirs is defined
+
+- name: Push and update each changed stack sequentially
+  block:
+    - name: Push changed stack directory
+      ansible.posix.synchronize:
+        src: "{{ playbook_dir }}/stacks/{{ inventory_hostname }}/{{ item }}/"
+        dest: "/opt/stacks/{{ item }}"
+        mode: push
+        archive: yes
+        recursive: yes
+      delegate_to: localhost
+
+    - name: Check whether stack has running containers
+      command: /usr/local/bin/stacks "{{ item }}" ps -q
+      register: stack_ps
+      failed_when: false
+      changed_when: false
+
+    - name: Bring up changed stack if it was running
+      command: /usr/local/bin/stacks "{{ item }}" up -d
+      register: compose_up
+      failed_when: compose_up.rc != 0
+      when: stack_ps.stdout | trim != ''
+
+    - name: Wait for stack containers to reach running state
+      shell: |
+        ids=$(/usr/local/bin/stacks "{{ item }}" ps -q)
+        if [ -z "$ids" ]; then
+          exit 0
+        fi
+        for id in $ids; do
+          status=$(docker inspect -f '{{"{{.State.Status}}"}}' $id)
+          exit_code=$(docker inspect -f '{{"{{.State.ExitCode}}"}}' $id 2>/dev/null || echo '')
+          # Consider service healthy if it's running, or it exited successfully (exit code 0)
+          if [ "$status" = "running" ]; then
+            continue
+          fi
+          if [ "$status" = "exited" ] && [ "$exit_code" = "0" ]; then
+            continue
+          fi
+          exit 1
+        done
+        exit 0
+      register: wait_result
+      until: wait_result.rc == 0
+      retries: 10
+      delay: 6
+      when: stack_ps.stdout | trim != ''
+  loop: "{{ changed_stacks }}"
+  when:
+    - changed_stacks is defined
+    - changed_stacks | length > 0

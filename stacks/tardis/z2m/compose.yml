@@ -1,0 +1,35 @@
+services:
+  z2m:
+    image: ghcr.io/koenkk/zigbee2mqtt
+    restart: unless-stopped
+    volumes:
+      - ${STACKS_DATA_DIR:?}/z2m/data:/app/data
+    environment:
+      TZ: Europe/Berlin
+      Z2M_WATCHDOG: default
+    secrets:
+      - source: z2m_secrets
+        target: /app/data/secrets.yaml
+    networks:
+      - traefik
+      - mqtt
+      - iot
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.z2m.rule=Host(`z2m.c12z.de`)"
+      - "traefik.http.routers.z2m.entrypoints=https"
+      - "traefik.http.services.z2m.loadbalancer.server.port=8080"
+
+secrets:
+  z2m_secrets:
+    file: ${STACKS_DATA_DIR:?}/z2m/.secrets.yaml
+
+networks:
+  traefik:
+    external: true
+  iot:
+    name: 'iot-net'
+    external: true
+  mqtt:
+    name: mqtt
+    external: true

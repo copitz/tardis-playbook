@@ -1,0 +1,18 @@
+services:
+  homepage:
+    image: ghcr.io/gethomepage/homepage:latest
+    container_name: homepage
+    volumes:
+      - ${STACKS_DATA_DIR:?}/home/config:/app/config
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - traefik
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.services.home.loadbalancer.server.port=3000"
+      - "traefik.http.routers.home.rule=Host(`home.c12z.de`)"
+      - "traefik.http.routers.home.entrypoints=https"
+
+networks:
+  traefik:
+    external: true

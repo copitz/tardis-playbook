@@ -1,0 +1,40 @@
+services:
+  neolink:
+    image: "quantumentangledandy/neolink:v0.5.17"
+    build: https://github.com/QuantumEntangledAndy/neolink.git#v0.5.17:/
+    restart: unless-stopped
+    volumes:
+      - ./neolink.toml:/etc/neolink.toml
+    deploy:
+      resources:
+        limits:
+          memory: 768M
+
+  frigate:
+    image: ghcr.io/blakeblackshear/frigate:stable-tensorrt
+    restart: unless-stopped
+    shm_size: "124mb" # update for your cameras based on calculation above
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - ${STACKS_DATA_DIR:?}/frigate/config:/config
+      - ${STACKS_DATA_DIR:?}/frigate/storage:/media/frigate
+    networks:
+      - default
+      - traefik
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.frigate.rule=Host(`frigate.c12z.de`)"
+      - "traefik.http.routers.frigate.entrypoints=https"
+      - "traefik.http.services.frigate.loadbalancer.server.port=8971"
+    environment:
+      FRIGATE_RTSP_PASSWORD: "password"
+      YOLO_MODELS: yolov7-320
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility,video
+    runtime: "nvidia"
+    depends_on:
+      - neolink
+
+networks:
+  traefik:
+    external: true

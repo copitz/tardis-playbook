@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+# Bash completion for the `stacks` command
+_stacks_complete() {
+  local cur prev stack stacks_dir dir services subcommands
+  cur="${COMP_WORDS[COMP_CWORD]}"
+  prev="${COMP_WORDS[COMP_CWORD-1]}"
+  stacks_dir="/opt/stacks"
+
+  if [[ ${COMP_CWORD} -eq 1 ]]; then
+    if [[ -d "$stacks_dir" ]]; then
+      COMPREPLY=( $(compgen -W "$(ls -1 "$stacks_dir" 2>/dev/null || true)" -- "$cur") )
+    else
+      COMPREPLY=()
+    fi
+    return
+  fi
+
+  stack="${COMP_WORDS[1]}"
+  dir="$stacks_dir/$stack"
+  if [[ ! -d "$dir" ]]; then
+    COMPREPLY=()
+    return
+  fi
+
+  subcommands="up down restart stop start pull logs exec run ps build config images kill pause unpause port rm top version"
+
+  if [[ ${COMP_CWORD} -eq 2 ]]; then
+    COMPREPLY=( $(compgen -W "$subcommands" -- "$cur") )
+    return
+  fi
+
+  case "$prev" in
+    up|logs|exec|run|down|restart|start|stop|build|config)
+      services=$(cd "$dir" && docker compose -f compose.yml config --services 2>/dev/null || true)
+      COMPREPLY=( $(compgen -W "$services" -- "$cur") )
+      ;;
+    *)
+      COMPREPLY=()
+      ;;
+  esac
+}
+complete -F _stacks_complete stacks

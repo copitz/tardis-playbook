@@ -1,0 +1,37 @@
+services:
+  samba:
+    image: ghcr.io/servercontainers/samba
+    container_name: samba
+    restart: unless-stopped
+    environment:
+      ACCOUNT_lilla: "lilla:1001:XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX:D22808CC41C2F5C2F4077BDD34A72BA1:[U          ]:LCT-692A1CB7:"
+      ACCOUNT_copitz: "copitz:1000:XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX:FFC41DB8FBF5B75F29872DD7EA9D0D94:[U          ]:LCT-692A1667:"
+
+      GROUPS_family: 1002
+      GROUPS_copitz: family
+      GROUPS_lilla: family
+
+      SAMBA_VOLUME_CONFIG_memories: "[Memories]; path=/shares/share/Fotos; valid users = \"@family\"; guest ok = no; read only = no; browseable = yes"
+      SAMBA_VOLUME_CONFIG_media: "[Media]; path=/shares/share/media; valid users = \"@family\"; guest ok = no; read only = no; browseable = yes"
+      SAMBA_VOLUME_CONFIG_misc: "[Misc]; path=/shares/share/etc; valid users = \"@family\"; guest ok = no; read only = no; browseable = yes"
+
+      SAMBA_VOLUME_CONFIG_copitz: "[Christian]; path=/shares/copitz; valid users = copitz; guest ok = no; read only = no; browseable = yes"
+      SAMBA_VOLUME_CONFIG_lilla: "[Lilla]; path=/shares/lilla; valid users = lilla; guest ok = no; read only = no; browseable = yes"
+
+      DISABLE_FRUIT_DEFAULTS: 1
+    networks:
+      srv:
+        ipv4_address: 10.0.0.3
+    volumes:
+      - /tank/assets/copitz:/shares/copitz
+      - /tank/assets/lilla:/shares/lilla
+      - /tank/assets/share:/shares/share
+    cap_add:
+      - NET_ADMIN
+      - SYS_ADMIN
+      - SYS_TIME
+
+networks:
+  srv:
+    name: "srv-net"
+    external: true

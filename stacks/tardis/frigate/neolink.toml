@@ -1,0 +1,9 @@
+bind = "0.0.0.0"
+
+[[cameras]]
+name = "vorgarten"
+username = "neolink"
+password = "FuckOff69"
+uid = "95270007B1AT1HKU"
+address = "192.168.11.23"
+push_notifications = false

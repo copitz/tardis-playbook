@@ -1,0 +1,36 @@
+services:
+  mosquitto:
+    image: eclipse-mosquitto:latest
+    restart: unless-stopped
+    networks:
+      traefik:
+      mqtt:
+        aliases:
+          - mqtt
+    volumes:
+      - ${STACKS_DATA_DIR:?}/mqtt/config:/mosquitto/config
+      - mosquitto_data:/mosquitto/data
+    labels:
+      - "traefik.enable=true"
+      - "traefik.tls.certresolver=hetzner_resolver"
+      - "traefik.tcp.routers.mqtts.rule=HostSNI(`mqtt.c12z.de`)"
+      - "traefik.tcp.routers.mqtts.entrypoints=mqtts"
+      - "traefik.tcp.routers.mqtts.tls=true"
+      - "traefik.tcp.routers.mqtts.service=mqtts-svc"
+      - "traefik.tcp.services.mqtts-svc.loadbalancer.server.port=1883"
+      - "traefik.http.routers.mqtts.tls=true"
+      - "traefik.http.routers.mqtts-ws.rule=Host(`mqtt.c12z.de`) && PathPrefix(`/mqtt`)"
+      - "traefik.http.routers.mqtts-ws.entrypoints=mqtts-ws"
+      - "traefik.http.routers.mqtts-ws.tls=true"
+      - "traefik.http.routers.mqtts-ws.service=mqtts-ws-svc"
+      - "traefik.http.services.mqtts-ws-svc.loadbalancer.server.port=9001"
+
+networks:
+  traefik:
+    external: true
+  mqtt:
+    name: mqtt
+    internal: true
+
+volumes:
+  mosquitto_data:

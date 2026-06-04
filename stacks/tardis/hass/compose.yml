@@ -1,0 +1,32 @@
+services:
+  hass:
+    image: "ghcr.io/home-assistant/home-assistant:stable"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.services.hass.loadbalancer.server.port=8123"
+      - "traefik.http.routers.hass.rule=Host(`hass.c12z.de`)"
+      - "traefik.http.routers.hass.entrypoints=https"
+    networks:
+      traefik:
+      lan:
+      iot:
+      mqtt:
+    volumes:
+      - ${STACKS_DATA_DIR:?}/hass/config:/config
+      - /etc/localtime:/etc/localtime:ro
+      - /run/dbus:/run/dbus:ro
+      - ${STACKS_DATA_DIR:?}/hass/custom_components/ha-solarman/custom_components/solarman:/config/custom_components/solarman
+    restart: unless-stopped
+
+networks:
+  traefik:
+    external: true
+  lan:
+    name: 'lan-net'
+    external: true
+  iot:
+    name: 'iot-net'
+    external: true
+  mqtt:
+    name: mqtt
+    external: true

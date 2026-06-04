@@ -1,1 +1,1 @@
-localhost ansible_connection=local
+tardis ansible_host=localhost ansible_connection=local

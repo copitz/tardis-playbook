@@ -1,0 +1,38 @@
+services:
+  victoriametrics:
+    image: victoriametrics/victoria-metrics:latest
+    ports:
+      - "8428:8428"
+    volumes:
+      - vm_data:/storage
+    command:
+      - -storageDataPath=/storage
+      - -retentionPeriod=90d
+
+  vmagent:
+    image: victoriametrics/vmagent:latest
+    ports:
+      - "8429:8429"
+    volumes:
+      - ${STACKS_DATA_DIR:?}/metrics/vmagent.yaml:/etc/prometheus/prometheus.yml
+      - vmagent_data:/vmagentdata
+    command:
+      - -promscrape.config=/etc/prometheus/prometheus.yml
+      - -remoteWrite.url=http://victoriametrics:8428/api/v1/write
+      - -remoteWrite.tmpDataPath=/vmagentdata
+    depends_on:
+      - victoriametrics
+
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "3000:3000"
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+    volumes:
+      - ${STACKS_DATA_DIR:?}/metrics/grafana-datasources.yaml:/etc/grafana/provisioning/datasources/datasources.yaml
+
+volumes:
+  vm_data:
+  vmagent_data:

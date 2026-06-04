@@ -1,0 +1,68 @@
+services:
+  jellyfin:
+    image: jellyfin/jellyfin
+    user: 1102:1100
+    volumes:
+      - ${STACKS_DATA_DIR:?}/jellyfin/config:/config
+      - cache:/cache
+      - /tank/assets/share/media:/media
+    restart: 'unless-stopped'
+    environment:
+      JELLYFIN_PublishedServerUrl: https://jelly.c12z.de
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility,video
+    runtime: "nvidia"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.services.jellyfin.loadbalancer.server.port=8096"
+      - "traefik.http.routers.jellyfin.rule=Host(`jelly.c12z.de`)"
+      - "traefik.http.routers.jellyfin.entrypoints=https"
+    networks:
+      default:
+      traefik:
+      arr:
+        ipv4_address: 10.0.1.2
+
+  m3u-editor:
+    image: sparkison/m3u-editor:latest
+    environment:
+      - TZ=Europe/Berlin
+      - APP_URL=https://jellytv.c12z.de
+      - REVERB_HOST=jellytv.c12z.de
+      - REVERB_SCHEME=https
+    volumes:
+      - ${STACKS_DATA_DIR:?}/jellyfin/m3u-editor-config:/var/www/config
+    restart: unless-stopped
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.m3u-main.rule=Host(`jellytv.c12z.de`)"
+      - "traefik.http.routers.m3u-main.entrypoints=https"
+      - "traefik.http.routers.m3u-main.service=m3u-main"
+      - "traefik.http.services.m3u-main.loadbalancer.server.port=36400"
+      - "traefik.http.services.m3u-main.loadbalancer.server.scheme=http"
+      - "traefik.http.routers.m3u-ws.rule=Host(`jellytv.c12z.de`) && PathPrefix(`/app`)"
+      - "traefik.http.routers.m3u-ws.entrypoints=https"
+      - "traefik.http.routers.m3u-ws.service=m3u-ws"
+      - "traefik.http.routers.m3u-ws.middlewares=m3u-websocket"
+      - "traefik.http.services.m3u-ws.loadbalancer.server.port=36800"
+      - "traefik.http.services.m3u-ws.loadbalancer.server.scheme=http"
+      - "traefik.http.middlewares.m3u-websocket.headers.customrequestheaders.Connection=Upgrade"
+      - "traefik.http.middlewares.m3u-websocket.headers.customrequestheaders.Upgrade=websocket"
+      - "traefik.http.middlewares.m3u-websocket.headers.customrequestheaders.Host=your-custom-tld.com"
+      - "traefik.http.middlewares.m3u-websocket.headers.customrequestheaders.X-Forwarded-Host=your-custom-tld.com"
+      - "traefik.http.middlewares.m3u-websocket.headers.customrequestheaders.X-Forwarded-Proto=https"
+    networks:
+      default:
+      traefik:
+
+volumes:
+  cache: {}
+
+networks:
+  traefik:
+    external: true
+  arr:
+    external: true
+  lan:
+    name: "lan-net"
+    external: true
