@@ -10,7 +10,7 @@ services:
       traefik:
       lan:
       iot:
-      mqtt:
+#      mqtt:
     volumes:
       - ${STACKS_DATA_DIR:?}/hass/config:/config
       - /etc/localtime:/etc/localtime:ro
@@ -27,6 +27,6 @@ networks:
   iot:
     name: 'iot-net'
     external: true
-  mqtt:
-    name: mqtt
-    external: true
+#  mqtt:
+#    name: mqtt
+#    external: true
