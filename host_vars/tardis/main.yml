@@ -1,1 +1,9 @@
-stacks_data_dir: /var/tardis/apps
+# Host-specific variables can go here.
+enable_vlans: true
+
+# Override docker network IP range prefixes to avoid clashes across hosts
+docker_networks:
+  lan:
+    ip_range_prefix: 27    # 192.168.11.0/27 = 192.168.11.0 - 192.168.11.31
+  iot:
+    ip_range_prefix: 27    # 10.0.1.0/27 = 10.0.1.0 - 10.0.1.31

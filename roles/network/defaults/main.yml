@@ -1,26 +1,35 @@
 # Physical NIC for LAN + SRV VLAN
 lan_iface: enp16s0
 
-# LAN details
-lan_docker_network_name: lan-net
-lan_docker_network_driver: ipvlan
-lan_docker_network_ip_range_prefix: 27 # 192.168.11.0/27 = 192.168.11.0 - 192.168.11.31
+# Network profile toggles
+enable_vlans: false
 
-# SRV details
-srv_vlan_id: 10
-srv_subnet: 10.0.0.0/24
-srv_gateway: 10.0.0.1
-srv_docker_network_name: srv-net
-srv_docker_network_driver: ipvlan
-srv_docker_network_ip_range_prefix: 32 # 10.0.0.0/32 = 10.0.0.0 - 10.0.0.0 --> Disable Docker IPAM assigning IPs from the pool, we will assign static IPs to containers
-
-# IOT details
-iot_vlan_id: 20
-iot_subnet: 10.0.1.0/24
-iot_gateway: 10.0.1.1
-iot_docker_network_name: iot-net
-iot_docker_network_driver: ipvlan
-iot_docker_network_ip_range_prefix: 27 # 10.0.1.0/27 = 10.0.1.0 - 10.0.1.31
+# Unified bridge network configuration
+docker_networks:
+  lan:
+    name: lan-net
+    parent: br-lan
+    vlan_id: null
+    subnet: "{{ ansible_facts['default_ipv4'].network ~ '/' ~ ansible_facts['default_ipv4'].prefix }}"
+    gateway: "{{ ansible_facts['default_ipv4'].gateway }}"
+    driver: ipvlan
+    # ip_range_prefix: 27  # Must be set per host to avoid IP clashes across docker hosts
+  srv:
+    name: srv-net
+    parent: br-srv
+    vlan_id: 10
+    subnet: 10.0.0.0/24
+    gateway: 10.0.0.1
+    driver: ipvlan
+    ip_range_prefix: 32 # Disable Docker IPAM assigning IPs from the pool, we will assign static IPs to containers
+  iot:
+    name: iot-net
+    parent: br-iot
+    vlan_id: 20
+    subnet: 10.0.1.0/24
+    gateway: 10.0.1.1
+    driver: ipvlan
+    # ip_range_prefix: 27  # Must be set per host to avoid IP clashes across docker hosts
 
 # NetworkManager is having issues detecting connectivity on unmanaged interfaces (br-lan)
 # This leads to apps relying on NetworkManager thinking there is no network connection

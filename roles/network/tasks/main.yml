@@ -7,31 +7,15 @@
 
 # --- Docker networks ---
 
-- name: "Ensure Docker LAN network exists and matches expected config"
-  import_tasks: docker-network.yml
+- name: "Ensure Docker bridge networks exist and match expected config"
+  include_tasks: docker-network.yml
+  loop: "{{ docker_networks | dict2items }}"
   vars:
-    network: "{{ lan_docker_network_name }}"
-    parent: br-lan
-    subnet: "{{ ansible_facts['default_ipv4'].network ~ '/' ~ ansible_facts['default_ipv4'].prefix }}"
-    gateway: "{{ ansible_facts['default_ipv4'].gateway }}"
-    driver: "{{ lan_docker_network_driver }}"
-    ip_range: "{{ ansible_facts['default_ipv4'].network ~ '/' ~ lan_docker_network_ip_range_prefix }}"
-
-- name: "Ensure Docker SRV network exists and matches expected config"
-  import_tasks: docker-network.yml
-  vars:
-    network: "{{ srv_docker_network_name }}"
-    parent: br-srv
-    subnet: "{{ srv_subnet }}"
-    gateway: "{{ srv_gateway }}"
-    driver: "{{ srv_docker_network_driver }}"
-    ip_range: "{{ srv_subnet.split('/')[0] }}/{{ srv_docker_network_ip_range_prefix }}"
-- name: "Ensure Docker IoT network exists and matches expected config"
-  import_tasks: docker-network.yml
-  vars:
-    network: "{{ iot_docker_network_name }}"
-    parent: br-iot
-    subnet: "{{ iot_subnet }}"
-    gateway: "{{ iot_gateway }}"
-    driver: "{{ iot_docker_network_driver }}"
-    ip_range: "{{ iot_subnet.split('/')[0] }}/{{ iot_docker_network_ip_range_prefix }}"
+    network: "{{ item.value.name }}"
+    parent: "{{ item.value.parent }}"
+    subnet: "{{ item.value.subnet }}"
+    gateway: "{{ item.value.gateway }}"
+    driver: "{{ item.value.driver }}"
+    ip_range_prefix: "{{ item.value.ip_range_prefix }}"
+    ip_range: "{{ item.value.subnet.split('/')[0] }}/{{ item.value.ip_range_prefix }}"
+  when: enable_vlans
