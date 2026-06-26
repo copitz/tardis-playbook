@@ -1,0 +1,25 @@
+services:
+  esphome:
+    container_name: esphome
+    image: ghcr.io/esphome/esphome
+    volumes:
+      - ${STACKS_DATA_DIR:?}/esphome/config:/config
+      - /etc/localtime:/etc/localtime:ro
+    restart: always
+    privileged: true
+    # network_mode: host
+    devices:
+      - /dev/ttyACM0:/dev/ttyACM0
+    environment:
+      - USERNAME=copitz
+      - PASSWORD=test123
+    networks:
+      - default
+      - iot
+    ports:
+      - "6052:6052/tcp"
+    
+networks:
+  iot:
+    name: 'iot-net'
+    external: true
