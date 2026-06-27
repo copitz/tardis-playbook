@@ -1,43 +1,43 @@
 # Physical NIC for LAN + SRV VLAN
-lan_iface: enp16s0
+network_lan_iface: enp16s0
 
 # Network profile toggles
-enable_vlans: false
-wifi_ssid: ""
-wifi_psk: ""
+network_vlans_enabled: false
+network_wifi_ssid: ""
+network_wifi_psk: ""
 
-# Unified bridge network configuration
-docker_networks:
-  lan:
-    name: lan-net
-    parent: br-lan
-    vlan_id: null
-    subnet: "{{ ansible_facts['default_ipv4'].network ~ '/' ~ ansible_facts['default_ipv4'].prefix }}"
-    gateway: "{{ ansible_facts['default_ipv4'].gateway }}"
-    driver: ipvlan
-    # ip_range_prefix: 27  # Must be set per host to avoid IP clashes across docker hosts
-  srv:
-    name: srv-net
-    parent: br-srv
-    vlan_id: 10
-    subnet: 10.0.0.0/24
-    gateway: 10.0.0.1
-    driver: ipvlan
-    ip_range_prefix: 32 # Disable Docker IPAM assigning IPs from the pool, we will assign static IPs to containers
-  iot:
-    name: iot-net
-    parent: br-iot
-    vlan_id: 20
-    subnet: 10.0.1.0/24
-    gateway: 10.0.1.1
-    driver: ipvlan
-    # ip_range_prefix: 27  # Must be set per host to avoid IP clashes across docker hosts
+# LAN (host-bridged, no VLAN tag)
+network_lan_name: lan-net
+network_lan_parent: br-lan
+network_lan_vlan_id: ~
+network_lan_subnet: "{{ ansible_facts['default_ipv4'].network ~ '/' ~ ansible_facts['default_ipv4'].prefix }}"
+network_lan_gateway: "{{ ansible_facts['default_ipv4'].gateway }}"
+network_lan_driver: ipvlan
+network_lan_ip_range_prefix: ~  # Must be set per host to avoid IP clashes across docker hosts
+
+# SRV VLAN
+network_srv_name: srv-net
+network_srv_parent: br-srv
+network_srv_vlan_id: 10
+network_srv_subnet: 10.0.0.0/24
+network_srv_gateway: 10.0.0.1
+network_srv_driver: ipvlan
+network_srv_ip_range_prefix: 32  # Disable Docker IPAM assigning IPs from the pool
+
+# IoT VLAN
+network_iot_name: iot-net
+network_iot_parent: br-iot
+network_iot_vlan_id: 20
+network_iot_subnet: 10.0.1.0/24
+network_iot_gateway: 10.0.1.1
+network_iot_driver: ipvlan
+network_iot_ip_range_prefix: ~  # Must be set per host to avoid IP clashes across docker hosts
 
 # NetworkManager is having issues detecting connectivity on unmanaged interfaces (br-lan)
 # This leads to apps relying on NetworkManager thinking there is no network connection
 # Thus, we disable NetworkManager entirely and manage all interfaces via networkd
-enable_networkmanager: false
+network_manager_enabled: false
 
 # Docker daemon network related settings
-docker_address_pool_base: "172.20.0.0/16"
-docker_address_pool_size: 24
+network_docker_pool_base: "172.20.0.0/16"
+network_docker_pool_size: 24

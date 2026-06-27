@@ -13,6 +13,6 @@
     existing: "{{ docker_daemon_raw.content | default('e30=') | b64decode | from_json }}" # The e30= is base64 for {}
     patch:
       default-address-pools:
-        - base: "{{ docker_address_pool_base }}"
-          size: "{{ docker_address_pool_size }}"
+        - base: "{{ network_docker_pool_base }}"
+          size: "{{ network_docker_pool_size }}"
   notify: restart docker

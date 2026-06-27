@@ -15,17 +15,18 @@
 
 - name: Define desired systemd-networkd config files
   set_fact:
-    networkd_files: >-
-      {% if enable_vlans %}
-      - name: "10-{{ lan_iface }}.network"
+    networkd_files: |-
+      {% if network_vlans_enabled %}
+      - name: "10-{{ network_lan_iface }}.network"
         content: |
           [Match]
-          Name={{ lan_iface }}
+          Name={{ network_lan_iface }}
 
           [Network]
           Bridge=br-lan
-          {% for item in docker_networks | dict2items | selectattr('value.vlan_id') %}VLAN=vlan{{ item.value.vlan_id }}
+          {% for vlan_id in [network_srv_vlan_id, network_iot_vlan_id] | select %}VLAN=vlan{{ vlan_id }}
           {% endfor %}
+
       - name: "20-br-lan.netdev"
         content: |
           [NetDev]
@@ -67,10 +68,10 @@
           LinkLocalAddressing=no
           IPv6Init=no
           RouteMetric=200
-          {% if wifi_ssid | default('') | length > 0 %}
+          {% if network_wifi_ssid | default('') | length > 0 %}
           [Wireless]
-          SSID={{ wifi_ssid }}
-          PSK={{ wifi_psk }}
+          SSID={{ network_wifi_ssid }}
+          PSK={{ network_wifi_psk }}
           {% endif %}
 
       - name: "90-default.network"
@@ -87,34 +88,38 @@
       {% endif %}
 
 - name: Add VLAN networkd file definitions
-  when: enable_vlans
+  when: network_vlans_enabled
   vars:
     vlan_files: |
-      {% for item in docker_networks | dict2items | selectattr('value.vlan_id') %}
+      {% set vlans = [
+        {'key': 'srv', 'vlan_id': network_srv_vlan_id, 'parent': network_srv_parent},
+        {'key': 'iot', 'vlan_id': network_iot_vlan_id, 'parent': network_iot_parent}
+      ] | selectattr('vlan_id') | list %}
+      {% for item in vlans %}
       - name: "30-vlan-{{ item.key }}.netdev"
         content: |
           [NetDev]
-          Name=vlan{{ item.value.vlan_id }}
+          Name=vlan{{ item.vlan_id }}
           Kind=vlan
 
           [VLAN]
-          Id={{ item.value.vlan_id }}
+          Id={{ item.vlan_id }}
       - name: "30-vlan-{{ item.key }}.network"
         content: |
           [Match]
-          Name=vlan{{ item.value.vlan_id }}
+          Name=vlan{{ item.vlan_id }}
 
           [Network]
-          Bridge={{ item.value.parent }}
-      - name: "40-{{ item.value.parent }}.netdev"
+          Bridge={{ item.parent }}
+      - name: "40-{{ item.parent }}.netdev"
         content: |
           [NetDev]
-          Name={{ item.value.parent }}
+          Name={{ item.parent }}
           Kind=bridge
-      - name: "40-{{ item.value.parent }}.network"
+      - name: "40-{{ item.parent }}.network"
         content: |
           [Match]
-          Name={{ item.value.parent }}
+          Name={{ item.parent }}
 
           [Network]
           # No IP for host on bridge, only for containers.
@@ -122,7 +127,11 @@
           # which is what we want, so that host is just another client on the LAN
       {% endfor %}
   set_fact:
-    networkd_files: "{{ networkd_files + (vlan_files | from_yaml) }}"
+    networkd_files: "{{ (networkd_files | from_yaml) + (vlan_files | from_yaml) }}"
+
+- name: Show networkd_files
+  debug:
+    var: networkd_files
 
 # ----------------------------------------------------------------------
 # DEPLOY THE FILES

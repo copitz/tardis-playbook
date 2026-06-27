@@ -9,7 +9,7 @@
     that: ansible_facts['default_ipv4'].interface == 'br-lan'
     success_msg: "LAN is the default route"
     fail_msg: "LAN is not the default route, current default route is via {{ ansible_facts['default_ipv4'].interface }}"
-  when: enable_vlans
+  when: network_vlans_enabled
 
 - name: Verify LAN connectivity
   vars:
@@ -18,11 +18,12 @@
     cmd: "ping -I br-lan -c 2 -W 2 {{ test_target }}"
   register: ping_result
   changed_when: false
+  check_mode: false
   failed_when: ping_result.rc != 0
   retries: 3
   delay: 2
   until: ping_result.rc == 0
-  when: enable_vlans
+  when: network_vlans_enabled
 
 - name: Assert a default route exists
   ansible.builtin.assert:
@@ -30,4 +31,4 @@
       - ansible_facts['default_ipv4'] is defined
     success_msg: "A default IPv4 route exists"
     fail_msg: "No default IPv4 route exists"
-  when: not enable_vlans
+  when: not network_vlans_enabled

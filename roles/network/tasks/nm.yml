@@ -3,7 +3,7 @@
 - name: Configure NetworkManager unmanaged devices
   vars:
     unmanaged_devices:
-      - "{{ lan_iface }}"
+      - "{{ network_lan_iface }}"
       - "br-lan"
       - "br-srv"
       - "br-iot"
@@ -18,7 +18,7 @@
       unmanaged-devices={{ ['interface-name:'] | product(unmanaged_devices) | map('join') | join(';') }}
   notify:
     - restart NetworkManager
-  when: enable_networkmanager
+  when: network_manager_enabled
 
 - name: Disable and mask NetworkManager
   ansible.builtin.systemd:
@@ -26,4 +26,4 @@
     state: stopped
     enabled: false
     masked: true
-  when: not enable_networkmanager
+  when: not network_manager_enabled

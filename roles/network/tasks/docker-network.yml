@@ -1,21 +1,22 @@
 # Create a docker network if it doesn't exist or assert it has the correct config
 
-- name: "docker/{{ network }}: Inspect network"
-  ansible.builtin.command: "docker network inspect {{ network }}"
+- name: "docker/{{ network_name }}: Inspect network"
+  ansible.builtin.command: "docker network inspect {{ network_name }}"
   register: docker_net_inspect_raw
   failed_when: false
   changed_when: false
+  check_mode: false
 
-- name: "docker/{{ network }}: Set fact whether network exists"
+- name: "docker/{{ network_name }}: Set fact whether network exists"
   set_fact:
     docker_net_exists: "{{ docker_net_inspect_raw.rc == 0 }}"
 
-- name: "docker/{{ network }}: Parse existing network"
+- name: "docker/{{ network_name }}: Parse existing network"
   set_fact:
     docker_net_inspect: "{{ docker_net_inspect_raw.stdout | from_json }}"
   when: docker_net_exists
 
-- name: "docker/{{ network }}: Assert config matches expected"
+- name: "docker/{{ network_name }}: Assert config matches expected"
   vars:
     ipam: "{{ (docker_net_inspect_raw.stdout | from_json)[0].IPAM.Config[0] }}"
   assert:
@@ -23,17 +24,17 @@
       - ipam.Subnet == subnet
       - ipam.Gateway == gateway
       - ipam.IPRange is defined and ipam.IPRange == ip_range
-    fail_msg: "Docker network {{ network }} exists but config differs - please remove or update it manually"
+    fail_msg: "Docker network {{ network_name }} exists but config differs - please remove or update it manually"
     success_msg: All ok
   when: docker_net_exists
 
-- name: "docker/{{ network }}: Create docker network"
+- name: "docker/{{ network_name }}: Create docker network"
   command: >
     docker network create -d {{ driver | default('ipvlan') }}
     --subnet={{ subnet }}
     --gateway={{ gateway }}
     --ip-range {{ ip_range }}
     -o parent={{ parent }}
-    {{ network }}
+    {{ network_name }}
   when: not docker_net_exists
 
