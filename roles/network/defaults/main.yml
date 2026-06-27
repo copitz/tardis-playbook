@@ -3,6 +3,8 @@ lan_iface: enp16s0
 
 # Network profile toggles
 enable_vlans: false
+wifi_ssid: ""
+wifi_psk: ""
 
 # Unified bridge network configuration
 docker_networks:

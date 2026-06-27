@@ -51,7 +51,9 @@
 
           [Network]
           DHCP=yes
-          IPv6AcceptRA=yes
+          IPv6AcceptRA=no
+          LinkLocalAddressing=no
+          IPv6Init=no
           RouteMetric=100
 
       - name: "20-wifi.network"
@@ -61,8 +63,15 @@
 
           [Network]
           DHCP=yes
-          IPv6AcceptRA=yes
+          IPv6AcceptRA=no
+          LinkLocalAddressing=no
+          IPv6Init=no
           RouteMetric=200
+          {% if wifi_ssid | default('') | length > 0 %}
+          [Wireless]
+          SSID={{ wifi_ssid }}
+          PSK={{ wifi_psk }}
+          {% endif %}
 
       - name: "90-default.network"
         content: |
@@ -71,7 +80,9 @@
 
           [Network]
           DHCP=yes
-          IPv6AcceptRA=yes
+          IPv6AcceptRA=no
+          LinkLocalAddressing=no
+          IPv6Init=no
           RouteMetric=300
       {% endif %}
 
