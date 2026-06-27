@@ -1,4 +1,23 @@
-- import_tasks: nvidia-cuda.yml
-- import_tasks: nvidia-ctk.yml
-#Not sure if that is really necessary:
-- import_tasks: amd-radeon.yml
+- name: Detect GPU hardware
+  command: lspci -nn
+  register: _lspci
+  changed_when: false
+  check_mode: false
+
+- name: Set GPU detection facts
+  set_fact:
+    # match on PCI vendor IDs and class codes instead of name strings. 
+    # In lspci -nn output, every device shows [vendor:device] and [class] in brackets — AMD's vendor ID
+    # is 1002, NVIDIA's is 10de, and all display/GPU class codes start with
+    # 03 (0300 VGA, 0302 3D controller, 0380 display controller).
+    _has_nvidia: "{{ _lspci.stdout_lines | select('search', '\\[10de:') | select('search', '\\[03') | list | length > 0 }}"
+    _has_amd: "{{ _lspci.stdout_lines | select('search', '\\[1002:') | select('search', '\\[03') | list | length > 0 }}"
+
+- include_tasks: nvidia-cuda.yml
+  when: _has_nvidia
+
+- include_tasks: nvidia-ctk.yml
+  when: _has_nvidia
+
+- include_tasks: amd-radeon.yml
+  when: _has_amd
