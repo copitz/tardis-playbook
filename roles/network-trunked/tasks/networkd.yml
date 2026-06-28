@@ -16,7 +16,6 @@
 - name: Define desired systemd-networkd config files
   set_fact:
     networkd_files: |-
-      {% if network_vlans_enabled %}
       - name: "10-{{ network_lan_iface }}.network"
         content: |
           [Match]
@@ -44,51 +43,9 @@
 
           [Link]
           RequiredForOnline=routable
-      {% else %}
-      - name: "10-ethernet.network"
-        content: |
-          [Match]
-          Name=en*
-
-          [Network]
-          DHCP=yes
-          IPv6AcceptRA=no
-          LinkLocalAddressing=no
-          IPv6Init=no
-          RouteMetric=100
-
-      - name: "20-wifi.network"
-        content: |
-          [Match]
-          Name=wl*
-
-          [Network]
-          DHCP=yes
-          IPv6AcceptRA=no
-          LinkLocalAddressing=no
-          IPv6Init=no
-          RouteMetric=200
-          {% if network_wifi_ssid | default('') | length > 0 %}
-          [Wireless]
-          SSID={{ network_wifi_ssid }}
-          PSK={{ network_wifi_psk }}
-          {% endif %}
-
-      - name: "90-default.network"
-        content: |
-          [Match]
-          Name=*
-
-          [Network]
-          DHCP=yes
-          IPv6AcceptRA=no
-          LinkLocalAddressing=no
-          IPv6Init=no
-          RouteMetric=300
-      {% endif %}
+      
 
 - name: Add VLAN networkd file definitions
-  when: network_vlans_enabled
   vars:
     vlan_files: |
       {% set vlans = [

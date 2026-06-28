@@ -1,11 +1,6 @@
 # Physical NIC for LAN + SRV VLAN
 network_lan_iface: enp16s0
 
-# Network profile toggles
-network_vlans_enabled: false
-network_wifi_ssid: ""
-network_wifi_psk: ""
-
 # LAN (host-bridged, no VLAN tag)
 network_lan_name: lan-net
 network_lan_parent: br-lan

@@ -38,4 +38,3 @@
     driver: "{{ item.driver }}"
     ip_range_prefix: "{{ item.ip_range_prefix }}"
     ip_range: "{{ item.subnet.split('/')[0] }}/{{ item.ip_range_prefix }}"
-  when: network_vlans_enabled

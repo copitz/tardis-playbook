@@ -1,9 +1,5 @@
 ---
 - hosts: all
-  become: yes
-  become_method: su
-  environment:
-    PATH: "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
   roles:
     - role: general
       tags: [ge]
@@ -18,7 +14,7 @@
     - docker
     - role: drivers
       tags: [drivers]
-    - role: network
+    - role: network-trunked
       tags: [net]
     - role: stacks
       tags: [stacks]
