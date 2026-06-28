@@ -37,7 +37,3 @@ network_iot_ip_range_prefix: ~  # Must be set per host to avoid IP clashes acros
 # This leads to apps relying on NetworkManager thinking there is no network connection
 # Thus, we disable NetworkManager entirely and manage all interfaces via networkd
 network_manager_enabled: false
-
-# Docker daemon network related settings
-network_docker_pool_base: "172.20.0.0/16"
-network_docker_pool_size: 24

@@ -1,0 +1,3 @@
+# Network related settings
+docker_pool_base: "172.20.0.0/16"
+docker_pool_size: 24
