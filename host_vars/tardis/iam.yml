@@ -1,7 +1,4 @@
 ---
-# Inline IAM variables. Edit these directly in the role as requested.
-# This role is project-specific; variables live here (iam_ prefix).
-
 # Groups by GID
 iam_groups:
   1000:
