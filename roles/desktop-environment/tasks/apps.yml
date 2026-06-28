@@ -8,35 +8,30 @@
     components: [main]
     state: present
     enabled: yes
+  when: "'code' in desktop_apps_apt"
 
-- name: Install general requirements
+- name: Install APT apps
   ansible.builtin.apt:
-    name:
-      - git
-      - flatpak
-      - ark
-      - kalk
-      - code
-      - cups
-      - printer-driver-cups-pdf
-      - okular
-      - vlc
-      - calibre
-      - inkscape
-      - okular
+    name: "{{ desktop_apps_apt }}"
     update_cache: true
     state: present
+  when: desktop_apps_apt | length > 0
+
+- name: Install flatpak
+  ansible.builtin.apt:
+    name: flatpak
+    state: present
+  when: desktop_apps_flatpak | length > 0
 
 - name: Ensure Flathub remote is added
   ansible.builtin.command: >
     flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
   args:
     creates: /var/lib/flatpak/repo/flathub.trustedkeys.gpg
+  when: desktop_apps_flatpak | length > 0
 
-- name: Install apps from flathub
+- name: Install flatpak apps
   ansible.builtin.flatpak:
-    name:
-      - org.blender.Blender
-      - com.spotify.Client
-      - calibre.calibre
+    name: "{{ desktop_apps_flatpak }}"
     state: present
+  when: desktop_apps_flatpak | length > 0

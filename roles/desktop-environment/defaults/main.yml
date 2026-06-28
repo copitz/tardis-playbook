@@ -1,1 +1,3 @@
 desktop_users_config_file: /etc/desktop_users.conf
+desktop_apps_apt: []
+desktop_apps_flatpak: []

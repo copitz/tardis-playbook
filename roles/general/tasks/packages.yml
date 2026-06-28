@@ -1,0 +1,13 @@
+- name: Install base packages
+  ansible.builtin.apt:
+    name:
+      - git
+      - curl
+    state: present
+
+- name: Install additional packages
+  ansible.builtin.apt:
+    name: "{{ general_packages }}"
+    state: present
+  when: general_packages | length > 0
+

@@ -5,20 +5,14 @@
   environment:
     PATH: "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
   roles:
+    - role: general
+      tags: [ge]
     - role: lvm
       tags: [lvm]
     - role: iam
       tags: [iam]
-    - role: apps
-      tags: [apps]
     - role: desktop-environment
       tags: [de]
-    - role: basic-security
-      vars:
-        sudoers:
-          - copitz
-        open_ports: ['22', '443', '137', '138', '139', '445']
-      tags: [sec]
     - role: zfs-import
       tags: [zfs]
     - docker

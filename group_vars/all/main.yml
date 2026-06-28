@@ -1,1 +1,4 @@
 stacks_data_dir: /var/tardis/apps
+
+general_sudoers:
+  - copitz
