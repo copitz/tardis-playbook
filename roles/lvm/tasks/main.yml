@@ -1,50 +1,7 @@
-- name: Create the LVM volume group
-  community.general.lvg:
-    vg: vg_tardis
-    pvs: /dev/nvme0n1p3
-    pesize: 4M
-    state: active
+- name: Apply LVM configuration
+  ansible.builtin.include_tasks: apply.yml
+  when: lvm_lvs is defined
 
-- name: Create volume
-  community.general.lvol:
-    vg: "{{ item.vg }}"
-    lv: "{{ item.name }}"
-    size: "{{ item.size }}"
-    shrink: false
-  loop: "{{ lvm_lvs }}"
-  loop_control:
-    label: "{{ item.name }} ({{ item.size }})"
-
-- name: Create filesystem
-  ansible.builtin.filesystem:
-    fstype: "{{ item.fs }}"
-    dev: "/dev/{{ item.vg }}/{{ item.name }}"
-    resizefs: true
-  loop: "{{ lvm_lvs }}"
-  ignore_errors: "{{ansible_check_mode}}"
-  loop_control:
-    label: "{{ item.fs }}: /dev/{{ item.vg }}/{{ item.name }}"
-
-- name: Create mount points
-  ansible.builtin.file:
-    path: "{{ item.mount }}"
-    state: directory
-    owner: "{{ item.owner | default('root') }}"
-    group: "{{ item.group | default('root') }}"
-    mode: "{{ item.mode | default('0755') }}"
-  loop: "{{ lvm_lvs }}"
-  loop_control:
-    label: "{{ item.mount }}"
-
-- name: Mount logical volumes
-  ansible.builtin.mount:
-    path: "{{ item.mount }}"
-    src: "/dev/{{ item.vg }}/{{ item.name }}"
-    fstype: "{{ item.fs }}"
-    opts: "{{ item.opts | default('defaults') }}"
-    state: "{{ (item.mount == '/') | ternary('present', 'mounted') }}"
-    passno: "{{ item.fsck_pass | default('0') }}"
-  diff: true
-  loop: "{{ lvm_lvs }}"
-  loop_control:
-    label: "/dev/{{ item.vg }}/{{ item.name }} -> {{ item.mount }}"
+- name: Discover and save LVM configuration
+  ansible.builtin.include_tasks: discover.yml
+  when: lvm_lvs is not defined
