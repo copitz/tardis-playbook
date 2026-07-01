@@ -1,0 +1,22 @@
+- name: Gather LVM configuration from system
+  ansible.builtin.script:
+    cmd: "{{ role_path }}/files/discover_lvm.py"
+    executable: "{{ ansible_python_interpreter | default('python3') }}"
+  register: lvm_discovered_raw
+  changed_when: false
+  check_mode: false
+  become: true
+
+- name: Save LVM configuration to host_vars
+  ansible.builtin.copy:
+    content: "{{ lvm_discovered_raw.stdout }}"
+    dest: "{{ playbook_dir }}/host_vars/{{ inventory_hostname }}/lvm.yml"
+  delegate_to: localhost
+  register: lvm_vars_written
+
+- name: Review and re-run to apply
+  ansible.builtin.debug:
+    msg: >-
+      LVM configuration written to host_vars/{{ inventory_hostname }}/lvm.yml.
+      Review the file, then re-run the playbook to apply it.
+  when: lvm_vars_written.changed

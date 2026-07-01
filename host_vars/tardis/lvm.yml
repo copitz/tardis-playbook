@@ -1,16 +1,27 @@
+lvm_vgs:
+  - name: vg_tardis
+    pvs: /dev/nvme0n1p3
+    pesize: 4M
+
 lvm_lvs:
-  - name: lv_root
-    size: 55.88G
+  - name: lv_docker
     vg: vg_tardis
+    size: 30G
+    mount: /var/lib/docker
+    fs: ext4
+    opts: defaults,noatime
+    fsck_pass: 2
+  - name: lv_root
+    vg: vg_tardis
+    size: 70G
     mount: /
     fs: ext4
-    opts: "errors=remount-ro"
+    opts: errors=remount-ro
     fsck_pass: 1
-  - name: lv_docker
-    size: 20G
+  - name: lv_swap
     vg: vg_tardis
-    mount: /var/lib/docker
-    mode: '0710'
-    fs: ext4
-    opts: "defaults,noatime"
-    fsck_pass: 2
+    size: 14.9G
+    mount: none
+    fs: swap
+    opts: sw
+    fsck_pass: 0

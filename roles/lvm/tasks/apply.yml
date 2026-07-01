@@ -1,0 +1,72 @@
+- name: Create volume groups
+  community.general.lvg:
+    vg: "{{ item.name }}"
+    pvs: "{{ item.pvs }}"
+    pesize: "{{ item.pesize }}"
+    state: active
+  loop: "{{ lvm_vgs | default([]) }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Create volumes
+  community.general.lvol:
+    vg: "{{ item.vg }}"
+    lv: "{{ item.name }}"
+    size: "{{ item.size }}"
+    shrink: false
+  loop: "{{ lvm_lvs }}"
+  loop_control:
+    label: "{{ item.name }} ({{ item.size }})"
+  register: lvm_lv_create_result
+
+# With shrink=false, lvol silently leaves a volume that is already bigger than
+# requested alone - which happens when someone grew it manually outside of
+# this config. Flag it instead of letting the config quietly drift.
+- name: Warn about volumes larger on disk than configured
+  ansible.builtin.debug:
+    msg: >-
+      /dev/{{ item.item.vg }}/{{ item.item.name }} is {{ item.size }}{{ item.item.size | regex_search('[a-zA-Z]+$') }}
+      on disk but only {{ item.item.size }} is configured - update host_vars/lvm.yml to match.
+  loop: "{{ lvm_lv_create_result.results }}"
+  loop_control:
+    label: "{{ item.item.vg }}/{{ item.item.name }}"
+  when: (item.size | float) > (item.item.size | regex_replace('[^0-9.]', '') | float)
+
+- name: Create filesystems
+  ansible.builtin.filesystem:
+    fstype: "{{ item.fs }}"
+    dev: "/dev/{{ item.vg }}/{{ item.name }}"
+    # mkswap has no notion of growing a filesystem, so resizefs would fail
+    resizefs: "{{ item.fs != 'swap' }}"
+  loop: "{{ lvm_lvs }}"
+  ignore_errors: "{{ ansible_check_mode }}"
+  loop_control:
+    label: "{{ item.fs }}: /dev/{{ item.vg }}/{{ item.name }}"
+
+# Swap has no mountpoint (fstab uses "none") and is already set up and active
+# by the Debian installer, so there's nothing left to mount here.
+- name: Create mount points
+  ansible.builtin.file:
+    path: "{{ item.mount }}"
+    state: directory
+    owner: "{{ item.owner | default('root') }}"
+    group: "{{ item.group | default('root') }}"
+    mode: "{{ item.mode | default('0755') }}"
+  loop: "{{ lvm_lvs }}"
+  loop_control:
+    label: "{{ item.mount }}"
+  when: item.fs != 'swap'
+
+- name: Mount logical volumes
+  ansible.builtin.mount:
+    path: "{{ item.mount }}"
+    src: "/dev/{{ item.vg }}/{{ item.name }}"
+    fstype: "{{ item.fs }}"
+    opts: "{{ item.opts | default('defaults') }}"
+    state: "{{ (item.mount == '/') | ternary('present', 'mounted') }}"
+    passno: "{{ item.fsck_pass | default('0') }}"
+  diff: true
+  loop: "{{ lvm_lvs }}"
+  loop_control:
+    label: "/dev/{{ item.vg }}/{{ item.name }} -> {{ item.mount }}"
+  when: item.fs != 'swap'
