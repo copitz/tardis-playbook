@@ -3,7 +3,4 @@ ansible_become_method: su
 ansible_environment:
   PATH: "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 
-stacks_data_dir: /var/tardis/apps
-
-general_sudoers:
-  - copitz
+stacks_data_dir: /var/stacks

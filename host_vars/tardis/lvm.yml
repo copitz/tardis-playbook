@@ -1,0 +1,16 @@
+lvm_lvs:
+  - name: lv_root
+    size: 55.88G
+    vg: vg_tardis
+    mount: /
+    fs: ext4
+    opts: "errors=remount-ro"
+    fsck_pass: 1
+  - name: lv_docker
+    size: 20G
+    vg: vg_tardis
+    mount: /var/lib/docker
+    mode: '0710'
+    fs: ext4
+    opts: "defaults,noatime"
+    fsck_pass: 2

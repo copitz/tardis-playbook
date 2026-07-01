@@ -4,6 +4,16 @@ network_vlans_enabled: true
 network_lan_ip_range_prefix: 27    # 192.168.11.0/27 = 192.168.11.0 - 192.168.11.31
 network_iot_ip_range_prefix: 27    # 10.0.1.0/27 = 10.0.1.0 - 10.0.1.31
 
+stacks_data_dir: /var/tardis/apps
+
+general_sudoers:
+  - copitz
+
+general_open_ports:
+  - "22"
+  - "443"
+  - "445" # NB-445 (Microsoft-DS Active Directory, Windows shares)
+
 desktop_apps_apt:
   - ark
   - kalk

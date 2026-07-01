@@ -4,8 +4,3 @@ general_sudoers: []
 
 general_open_ports:
   - "22"
-  - "443"
-  - "137"
-  - "138"
-  - "139"
-  - "445"

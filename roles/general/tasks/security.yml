@@ -8,6 +8,7 @@
     rule: allow
     port: "{{ item }}"
   loop: "{{ general_open_ports }}"
+  when: general_open_ports | length > 0
 
 - name: Enable UFW
   ansible.builtin.ufw:
