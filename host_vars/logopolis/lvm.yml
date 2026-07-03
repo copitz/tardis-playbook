@@ -1,0 +1,21 @@
+
+lvm_vgs:
+  - name: z2m-vg
+    pvs: /dev/sda3
+    pesize: 4M
+
+lvm_lvs:
+  - name: root
+    vg: z2m-vg
+    size: 26.43G
+    mount: /
+    fs: ext4
+    opts: errors=remount-ro
+    fsck_pass: 1
+  - name: swap_1
+    vg: z2m-vg
+    size: 1.48G
+    mount: none
+    fs: swap
+    opts: sw
+    fsck_pass: 0

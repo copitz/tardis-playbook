@@ -1,4 +1,3 @@
 # Host-specific non-VLAN network settings
-network_vlans_enabled: false
 network_wifi_ssid: "{{ iot_wifi_ssid }}"
 network_wifi_psk: "{{ iot_wifi_password }}"

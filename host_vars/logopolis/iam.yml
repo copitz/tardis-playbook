@@ -1,0 +1,18 @@
+# Groups by GID
+iam_groups:
+  1000:
+    name: logopolis
+  986:
+    name: docker
+
+# Users by UID. Provide name and groups. Optional: comment, shell (default false), home (default false).
+# home: true -> /home/{{name}}, false -> /nonexistent
+# shell: true -> /bin/bash (login); false -> /usr/sbin/nologin (service account)
+iam_users:
+  1000:
+    name: logopolis
+    group: logopolis
+    groups: ["cdrom", "floppy", "audio", "dip", "video", "plugdev", "users", "netdev", "docker"]
+    shell: true
+    home: true
+    comment: "logopolis"

@@ -8,13 +8,13 @@
 - name: Define candidate Debian major versions for CUDA repo
   set_fact:
     cuda_debian_versions:
-      - "{{ ansible_distribution_major_version }}"
-      - "{{ ansible_distribution_major_version|int - 1 }}"
-      - "{{ ansible_distribution_major_version|int - 2 }}"
+      - "{{ ansible_facts['distribution_major_version']|int }}"
+      - "{{ ansible_facts['distribution_major_version']|int - 1 }}"
+      - "{{ ansible_facts['distribution_major_version']|int - 2 }}"
 
 - name: Probe available CUDA repos
   ansible.builtin.uri:
-    url: "https://developer.download.nvidia.com/compute/cuda/repos/debian{{ item }}/{{ ansible_architecture }}/cuda-keyring_1.1-1_all.deb"
+    url: "https://developer.download.nvidia.com/compute/cuda/repos/debian{{ item }}/{{ ansible_facts['architecture'] }}/cuda-keyring_1.1-1_all.deb"
     method: HEAD
     return_content: no
     status_code: 200
@@ -27,7 +27,7 @@
 
 - name: Pick first available CUDA repo
   set_fact:
-    cuda_repo_url: "{{ (cuda_repo_checks.results | selectattr('status','equalto',200) | map(attribute='invocation.module_args.url') | list | first) | default('') }}"
+    cuda_repo_url: "{{ (cuda_repo_checks.results | selectattr('status','equalto',200) | map(attribute='url') | list | first) | default('') }}"
 
 - name: Fail if no suitable CUDA repo was found
   ansible.builtin.fail:

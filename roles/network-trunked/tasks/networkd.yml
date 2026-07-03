@@ -86,10 +86,6 @@
   set_fact:
     networkd_files: "{{ (networkd_files | from_yaml) + (vlan_files | from_yaml) }}"
 
-- name: Show networkd_files
-  debug:
-    var: networkd_files
-
 # ----------------------------------------------------------------------
 # DEPLOY THE FILES
 # ----------------------------------------------------------------------

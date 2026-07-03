@@ -18,6 +18,7 @@
   ansible.builtin.apt:
     name: sudo
     state: present
+  when: general_sudoers | length > 0
 
 - name: Ensure sudoers users exist
   ansible.builtin.user:

@@ -1,0 +1,20 @@
+all:
+  vars:
+    ansible_become: yes
+    ansible_become_method: su
+    ansible_environment:
+      PATH: "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+
+workstation:
+  hosts:
+    tardis:
+      ansible_host: localhost
+      ansible_connection: local
+
+edge:
+  hosts:
+    logopolis:
+      ansible_host: logopolis.c12z.de
+      ansible_user: "{{ logopolis_user }}"
+      ansible_password: "{{ logopolis_password }}"
+      ansible_become_password: "{{ logopolis_root_password }}"

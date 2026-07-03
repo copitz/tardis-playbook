@@ -35,6 +35,8 @@ TAGS=()
 for arg in "$@"; do
   if [ "$arg" == "--dry-run" ] || [ "$arg" == "-d" ]; then
     FLAGS+=("--check")
+  elif [ "$arg" == "-v" ]; then
+    FLAGS+=("-v")
   elif [[ "$arg" == -* ]]; then
     echo "Error: Unknown flag '$arg'" >&2
     exit 1
@@ -53,4 +55,4 @@ else
   FLAGS+=("--skip-tags" "manual")
 fi
 
-ansible-playbook site.yml -i inventory --ask-become-pass "${FLAGS[@]}"
+ansible-playbook site.yml -i inventory.yml --ask-become-pass "${FLAGS[@]}"

@@ -21,7 +21,7 @@
 
 - name: Install NVIDIA Container Toolkit and dependencies at fixed version
   vars:
-    nvidia_container_toolkit_version: "1.18.0-1"
+    nvidia_container_toolkit_version: "1.19.1-1"
   apt:
     name:
       - "nvidia-container-toolkit={{ nvidia_container_toolkit_version }}"

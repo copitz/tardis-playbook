@@ -1,0 +1,45 @@
+- name: Push changed stack directory
+  ansible.posix.synchronize:
+    src: "{{ playbook_dir }}/stacks/{{ inventory_hostname }}/{{ item }}/"
+    dest: "/opt/stacks/{{ item }}"
+    mode: push
+    archive: yes
+    recursive: yes
+  delegate_to: localhost
+
+- name: Check whether stack has running containers
+  command: /usr/local/bin/stacks "{{ item }}" ps -q
+  register: stack_ps
+  failed_when: false
+  changed_when: false
+
+- name: Bring up changed stack if it was running
+  command: /usr/local/bin/stacks "{{ item }}" up -d
+  register: compose_up
+  failed_when: compose_up.rc != 0
+  when: stack_ps.stdout | trim != ''
+
+- name: Wait for stack containers to reach running state
+  shell: |
+    ids=$(/usr/local/bin/stacks "{{ item }}" ps -q)
+    if [ -z "$ids" ]; then
+      exit 0
+    fi
+    for id in $ids; do
+      status=$(docker inspect -f '{{"{{.State.Status}}"}}' $id)
+      exit_code=$(docker inspect -f '{{"{{.State.ExitCode}}"}}' $id 2>/dev/null || echo '')
+      # Consider service healthy if it's running, or it exited successfully (exit code 0)
+      if [ "$status" = "running" ]; then
+        continue
+      fi
+      if [ "$status" = "exited" ] && [ "$exit_code" = "0" ]; then
+        continue
+      fi
+      exit 1
+    done
+    exit 0
+  register: wait_result
+  until: wait_result.rc == 0
+  retries: 10
+  delay: 6
+  when: stack_ps.stdout | trim != ''

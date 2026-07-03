@@ -30,12 +30,13 @@
       register: stack_down
       failed_when: false
       changed_when: stack_down.rc == 0
+      loop: "{{ stacks_removed }}"
 
     - name: Remove deleted stack directory
       file:
         path: "/opt/stacks/{{ item }}"
         state: absent
-  loop: "{{ stacks_removed }}"
+      loop: "{{ stacks_removed }}"
   when:
     - stacks_removed is defined
     - stacks_removed | length > 0
@@ -74,52 +75,7 @@
     - remote_stack_dirs is defined
 
 - name: Push and update each changed stack sequentially
-  block:
-    - name: Push changed stack directory
-      ansible.posix.synchronize:
-        src: "{{ playbook_dir }}/stacks/{{ inventory_hostname }}/{{ item }}/"
-        dest: "/opt/stacks/{{ item }}"
-        mode: push
-        archive: yes
-        recursive: yes
-      delegate_to: localhost
-
-    - name: Check whether stack has running containers
-      command: /usr/local/bin/stacks "{{ item }}" ps -q
-      register: stack_ps
-      failed_when: false
-      changed_when: false
-
-    - name: Bring up changed stack if it was running
-      command: /usr/local/bin/stacks "{{ item }}" up -d
-      register: compose_up
-      failed_when: compose_up.rc != 0
-      when: stack_ps.stdout | trim != ''
-
-    - name: Wait for stack containers to reach running state
-      shell: |
-        ids=$(/usr/local/bin/stacks "{{ item }}" ps -q)
-        if [ -z "$ids" ]; then
-          exit 0
-        fi
-        for id in $ids; do
-          status=$(docker inspect -f '{{"{{.State.Status}}"}}' $id)
-          exit_code=$(docker inspect -f '{{"{{.State.ExitCode}}"}}' $id 2>/dev/null || echo '')
-          # Consider service healthy if it's running, or it exited successfully (exit code 0)
-          if [ "$status" = "running" ]; then
-            continue
-          fi
-          if [ "$status" = "exited" ] && [ "$exit_code" = "0" ]; then
-            continue
-          fi
-          exit 1
-        done
-        exit 0
-      register: wait_result
-      until: wait_result.rc == 0
-      retries: 10
-      delay: 6
-      when: stack_ps.stdout | trim != ''
+  ansible.builtin.include_tasks: update_stack.yml
   loop: "{{ changed_stacks }}"
   when:
     - changed_stacks is defined
