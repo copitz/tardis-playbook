@@ -21,7 +21,6 @@ set -euo pipefail
 # ── Configuration ─────────────────────────────────────────────────────────────
 
 STACKS_DIR="/opt/stacks"
-ENV_FILE="$STACKS_DIR/.env"
 
 # Determine how this script was invoked so help text and the internal
 # `stacks` wrapper call the script the same way the user invoked it.
@@ -86,12 +85,6 @@ fi
 shift
 
 if [[ $# -gt 0 ]]; then
-  if [[ -f "$ENV_FILE" ]]; then
-    set -a
-    source "$ENV_FILE"
-    set +a
-  fi
-
   cd "$STACK_DIR"
   exec docker compose -f "$STACK_DIR/compose.yml" "$@"
   exit 0
@@ -106,14 +99,6 @@ _rcfile=$(mktemp /tmp/stacks-init-XXXXXX)
 trap 'rm -f "$_rcfile"' EXIT
 
 cat > "$_rcfile" << RCFILE
-# ── Load node-level environment ───────────────────────────────────────────────
-# set -a / set +a exports all variables defined in the env file automatically
-if [[ -f "$ENV_FILE" ]]; then
-  set -a
-  source "$ENV_FILE"
-  set +a
-fi
-
 # ── Stack context ─────────────────────────────────────────────────────────────
 export STACK_NAME="$STACK_NAME"
 export STACK_DIR="$STACK_DIR"

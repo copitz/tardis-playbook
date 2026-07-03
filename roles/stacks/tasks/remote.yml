@@ -1,82 +1,124 @@
 ---
-
-- name: Find local stack directories
-  command: bash -lc 'if [ -d """{{ playbook_dir }}/stacks/{{ inventory_hostname }}""" ]; then cd """{{ playbook_dir }}/stacks/{{ inventory_hostname }}""" && find . -maxdepth 1 -mindepth 1 -type d -printf "%f\n" | sort; else echo ""; fi'
-  delegate_to: localhost
-  register: local_stack_dirs
-  changed_when: false
-  failed_when: false
-
-- name: Find remote stack directories
-  command: bash -lc 'cd /opt/stacks && find . -maxdepth 1 -mindepth 1 -type d -printf "%f\n" | sort'
-  register: remote_stack_dirs
-  changed_when: false
-  failed_when: false
-
-- name: Compute stacks deleted locally but still present remotely
-  set_fact:
-    stacks_removed: >-
-      {{ (remote_stack_dirs.stdout_lines | default([]))
-         | difference(local_stack_dirs.stdout_lines | default([]))
-         | list }}
-  when:
-    - local_stack_dirs is defined
-    - remote_stack_dirs is defined
-
-- name: Shutdown and remove remote stacks deleted locally
+- name: Render stack templates and deploy changed stacks on remote hosts
   block:
-    - name: Stop deleted stack containers
-      command: /usr/local/bin/stacks "{{ item }}" down
-      register: stack_down
+
+    # Create a temporary copy of the local stacks directory for rendering templates
+
+    - name: Create temp directory for rendering remote stack templates
+      tempfile:
+        state: directory
+        prefix: "stacks-{{ inventory_hostname }}-"
+      register: stacks_tmp_dir
+      delegate_to: localhost
+
+    - name: Copy local stacks directory to temp directory for rendering
+      copy:
+        src: "{{ playbook_dir }}/stacks/{{ inventory_hostname }}/"
+        dest: "{{ stacks_tmp_dir.path }}/"
+      delegate_to: localhost
+
+    - name: Render .j2 templates in the temp stack directory copy
+      include_tasks: render_templates.yml
+      vars:
+        stacks_render_dir: "{{ stacks_tmp_dir.path }}"
+
+    - name: Set stacks_src_dir to temp directory for rendering
+      set_fact:
+        stacks_src_dir: "{{ stacks_tmp_dir.path }}"
+
+    # Prepare and find local and remote stacks and the difference between them
+
+    - name: Ensure stacks directory exists
+      ansible.builtin.file:
+        path: /opt/stacks
+        state: directory
+        mode: "0755"
+
+    - name: Find local stack directories
+      command: bash -lc 'if [ -d """{{ stacks_src_dir }}""" ]; then cd """{{ stacks_src_dir }}""" && find . -maxdepth 1 -mindepth 1 -type d -printf "%f\n" | sort; else echo ""; fi'
+      delegate_to: localhost
+      register: local_stack_dirs
+      changed_when: false
       failed_when: false
-      changed_when: stack_down.rc == 0
-      loop: "{{ stacks_removed }}"
 
-    - name: Remove deleted stack directory
+    - name: Find remote stack directories
+      command: bash -lc 'cd /opt/stacks && find . -maxdepth 1 -mindepth 1 -type d -printf "%f\n" | sort'
+      register: remote_stack_dirs
+      changed_when: false
+      failed_when: false
+
+    - name: Compute stacks deleted locally but still present remotely
+      set_fact:
+        stacks_removed: >-
+          {{ (remote_stack_dirs.stdout_lines | default([]))
+            | difference(local_stack_dirs.stdout_lines | default([]))
+            | list }}
+      when:
+        - local_stack_dirs is defined
+        - remote_stack_dirs is defined
+
+    # Handle deleted stacks
+
+    - name: Shutdown and remove remote stacks deleted locally
+      block:
+        - name: Stop deleted stack containers
+          command: /usr/local/bin/stacks "{{ item }}" down
+          register: stack_down
+          failed_when: false
+          changed_when: stack_down.rc == 0
+          loop: "{{ stacks_removed }}"
+
+        - name: Remove deleted stack directory
+          file:
+            path: "/opt/stacks/{{ item }}"
+            state: absent
+          loop: "{{ stacks_removed }}"
+      when:
+        - stacks_removed is defined
+        - stacks_removed | length > 0
+
+    # Find changed stacks
+
+    - name: Dry-run push to detect changed stacks
+      ansible.posix.synchronize:
+        src: "{{ stacks_src_dir }}/"
+        dest: /opt/stacks
+        mode: push
+        archive: yes
+        recursive: yes
+        rsync_opts:
+          - --dry-run
+          - --itemize-changes
+          - --checksum
+      delegate_to: localhost
+      register: stacks_push_dry
+      changed_when: false
+      failed_when: false
+
+    - name: Set list of changed stacks from dry-run
+      set_fact:
+        changed_stacks: >-
+          {{ stacks_push_dry.stdout_lines
+            | map('regex_search', '^[><ch*]\S*\s+([^/\s]+)/', '\\1')
+            | select('truthy')
+            | map('first')
+            | unique
+            | list }}
+      when: stacks_push_dry is defined
+
+    # Push and update
+
+    - name: Push and update each changed stack sequentially
+      ansible.builtin.include_tasks: remote_stack.yml
+      loop: "{{ changed_stacks }}"
+      when:
+        - changed_stacks is defined
+        - changed_stacks | length > 0
+
+  always:
+    - name: Remove temp stack directory copy
       file:
-        path: "/opt/stacks/{{ item }}"
+        path: "{{ stacks_tmp_dir.path }}"
         state: absent
-      loop: "{{ stacks_removed }}"
-  when:
-    - stacks_removed is defined
-    - stacks_removed | length > 0
-
-- name: Dry-run push to detect changed stacks
-  ansible.posix.synchronize:
-    src: "{{ playbook_dir }}/stacks/{{ inventory_hostname }}/"
-    dest: /opt/stacks
-    mode: push
-    archive: yes
-    recursive: yes
-    rsync_opts:
-      - --dry-run
-      - --itemize-changes
-  delegate_to: localhost
-  register: stacks_push_dry
-  changed_when: false
-  failed_when: false
-
-- name: Set list of changed stacks and detect .env changes from dry-run
-  set_fact:
-    changed_stacks: >-
-      {{ stacks_push_dry.stdout_lines
-         | map('regex_search', 'stacks/{{ inventory_hostname }}/([^/]+)')
-         | select('truthy')
-         | map('regex_replace', 'stacks/{{ inventory_hostname }}/([^/]+).*', '\\\\1')
-         | unique
-         | list }}
-  when: stacks_push_dry is defined
-
-- name: Force update all stacks when env generation changed
-  set_fact:
-    changed_stacks: "{{ local_stack_dirs.stdout_lines | default([]) }}"
-  when:
-    - force_update_all
-    - remote_stack_dirs is defined
-
-- name: Push and update each changed stack sequentially
-  ansible.builtin.include_tasks: update_stack.yml
-  loop: "{{ changed_stacks }}"
-  when:
-    - changed_stacks is defined
-    - changed_stacks | length > 0
+      delegate_to: localhost
+  when: ansible_connection != 'local'

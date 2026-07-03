@@ -1,0 +1,11 @@
+- name: Render .j2 templates in the local stack directories
+  include_tasks: render_templates.yml
+  vars:
+    stacks_render_dir: "{{ playbook_dir }}/stacks/{{ inventory_hostname }}"
+
+- name: Link /opt/stacks to the host stacks directory when running locally
+  file:
+    src: "{{ playbook_dir }}/stacks/{{ inventory_hostname }}"
+    dest: /opt/stacks
+    state: link
+    force: yes

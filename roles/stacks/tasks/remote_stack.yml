@@ -1,6 +1,6 @@
 - name: Push changed stack directory
   ansible.posix.synchronize:
-    src: "{{ playbook_dir }}/stacks/{{ inventory_hostname }}/{{ item }}/"
+    src: "{{ stacks_src_dir }}/{{ item }}/"
     dest: "/opt/stacks/{{ item }}"
     mode: push
     archive: yes

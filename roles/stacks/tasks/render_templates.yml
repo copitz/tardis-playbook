@@ -1,0 +1,20 @@
+---
+- name: Find .j2 templates at the top level of each stack directory
+  find:
+    paths: "{{ stacks_render_dir }}"
+    patterns: "*.j2"
+    hidden: yes
+    recurse: yes
+    depth: 2
+  register: stack_templates
+  delegate_to: localhost
+  failed_when: false
+
+- name: Render stack .j2 templates to their basename
+  template:
+    src: "{{ item.path }}"
+    dest: "{{ item.path | regex_replace('\\.j2$', '') }}"
+  loop: "{{ stack_templates.files | default([]) }}"
+  loop_control:
+    label: "{{ item.path }}"
+  delegate_to: localhost

@@ -31,17 +31,11 @@ services:
       - 8083:8083
     environment:
       - TZ=Europe/Berlin
-      - HETZNER_API_TOKEN_FILE=/run/secrets/hetzner_api_key
+      - HETZNER_API_TOKEN=${HETZNER_API_TOKEN:?}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - ${STACKS_DATA_DIR:?}/traefik/letsencrypt:/letsencrypt
-    secrets:
-      - hetzner_api_key
     restart: always
-
-secrets:
-  hetzner_api_key:
-    file: ${STACKS_DATA_DIR:?}/traefik/hetzner_api_key.secret
 
 networks:
   traefik:
