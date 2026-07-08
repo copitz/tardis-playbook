@@ -29,20 +29,36 @@ if [ "$1" == "--list" ]; then
   exit 0
 fi
 
-# Handle dry-run flag
+# Handle dry-run, host and tag flags
 FLAGS=()
 TAGS=()
-for arg in "$@"; do
-  if [ "$arg" == "--dry-run" ] || [ "$arg" == "-d" ]; then
-    FLAGS+=("--check")
-  elif [ "$arg" == "-v" ]; then
-    FLAGS+=("-v")
-  elif [[ "$arg" == -* ]]; then
-    echo "Error: Unknown flag '$arg'" >&2
-    exit 1
-  else
-    TAGS+=("$arg")
-  fi
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --dry-run|-d)
+      FLAGS+=("--check")
+      shift
+      ;;
+    -v)
+      FLAGS+=("-v")
+      shift
+      ;;
+    -h|--host)
+      if [ -z "$2" ] || [[ "$2" == -* ]]; then
+        echo "Error: '$1' requires a host argument" >&2
+        exit 1
+      fi
+      FLAGS+=("--limit" "$2")
+      shift 2
+      ;;
+    -*)
+      echo "Error: Unknown flag '$1'" >&2
+      exit 1
+      ;;
+    *)
+      TAGS+=("$1")
+      shift
+      ;;
+  esac
 done
 
 # If tags are given, run only those tags
