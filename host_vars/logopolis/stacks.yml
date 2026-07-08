@@ -1,0 +1,15 @@
+traefik_domain: "logopolis.{{ domain }}"
+
+stacks:
+  traefik:
+    ip: ~ # DHCP, DNS handled by mikrotik
+    domain: "{{ traefik_domain }}"
+    crt_domain_main: "*.{{ domain }}"
+    crt_domain_sans: "*.{{ traefik_domain }}"
+    crt_email: "intra-apps@{{ domain }}"
+  z2m:
+    domain: "z2m.{{ domain }}"
+    cname: "{{ traefik_domain }}"
+  mqtt:
+    domain: "mqtt.{{ traefik_domain }}"
+    cname: "{{ traefik_domain }}"

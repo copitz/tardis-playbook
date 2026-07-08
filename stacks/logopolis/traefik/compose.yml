@@ -1,0 +1,46 @@
+services:
+  traefik:
+    image: traefik
+    container_name: traefik
+    command:
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--providers.docker.network=traefik"
+      - "--entrypoints.https.address=:443"
+      - "--entrypoints.https.http.tls=true"
+      - "--entrypoints.mqtts.address=:8883"
+      - "--entrypoints.mqtts-ws.address=:8083"
+      - "--certificatesresolvers.hetzner_resolver.acme.email=${CRT_EMAIL}"
+      - "--certificatesresolvers.hetzner_resolver.acme.storage=/letsencrypt/acme.json"
+      - "--certificatesresolvers.hetzner_resolver.acme.dnschallenge.provider=hetzner"
+      - "--log.level=INFO"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.tls.stores.default.defaultgeneratedcert.resolver=hetzner_resolver"
+      - "traefik.tls.stores.default.defaultgeneratedcert.domain.main=${CRT_DOMAIN_MAIN}"
+      - "traefik.tls.stores.default.defaultgeneratedcert.domain.sans=${CRT_DOMAIN_SANS}"
+    networks:
+      traefik:
+      default:
+      srv:
+        ipv4_address: ${SRV_IP}
+    ports:
+      - 80:80
+      - 443:443
+      - 8883:8883
+      - 8083:8083
+    environment:
+      - TZ=Europe/Berlin
+      - HETZNER_API_TOKEN=${HETZNER_API_TOKEN:?}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ${STACKS_DATA_DIR:?}/traefik/letsencrypt:/letsencrypt
+    restart: always
+
+networks:
+  traefik:
+    name: traefik
+    internal: true
+  srv:
+    name: "srv-net"
+    external: true

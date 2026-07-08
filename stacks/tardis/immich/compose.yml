@@ -38,7 +38,7 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.http.services.immich.loadbalancer.server.port=2283"
-      - "traefik.http.routers.immich.rule=Host(`img.c12z.de`)"
+      - "traefik.http.routers.immich.rule=Host(`${DOMAIN}`)"
       - "traefik.http.routers.immich.entrypoints=https"
 
   machine-learning:

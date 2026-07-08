@@ -2,8 +2,6 @@
 iam_groups:
   1000:
     name: logopolis
-  986:
-    name: docker
 
 # Users by UID. Provide name and groups. Optional: comment, shell (default false), home (default false).
 # home: true -> /home/{{name}}, false -> /nonexistent
@@ -12,7 +10,7 @@ iam_users:
   1000:
     name: logopolis
     group: logopolis
-    groups: ["cdrom", "floppy", "audio", "dip", "video", "plugdev", "users", "netdev", "docker"]
+    groups: ["cdrom", "floppy", "audio", "dip", "video", "plugdev", "users", "netdev"]
     shell: true
     home: true
     comment: "logopolis"

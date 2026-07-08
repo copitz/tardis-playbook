@@ -4,7 +4,7 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.http.services.hass.loadbalancer.server.port=8123"
-      - "traefik.http.routers.hass.rule=Host(`hass.c12z.de`)"
+      - "traefik.http.routers.hass.rule=Host(`${DOMAIN}`)"
       - "traefik.http.routers.hass.entrypoints=https"
     networks:
       traefik:

@@ -10,20 +10,20 @@ services:
       - "--entrypoints.https.http.tls=true"
       - "--entrypoints.mqtts.address=:8883"
       - "--entrypoints.mqtts-ws.address=:8083"
-      - "--certificatesresolvers.hetzner_resolver.acme.email=intra-apps@c12z.de"
+      - "--certificatesresolvers.hetzner_resolver.acme.email=${CRT_EMAIL}"
       - "--certificatesresolvers.hetzner_resolver.acme.storage=/letsencrypt/acme.json"
       - "--certificatesresolvers.hetzner_resolver.acme.dnschallenge.provider=hetzner"
       - "--log.level=INFO"
     labels:
       - "traefik.enable=true"
       - "traefik.tls.stores.default.defaultgeneratedcert.resolver=hetzner_resolver"
-      - "traefik.tls.stores.default.defaultgeneratedcert.domain.main=*.c12z.de"
-      - "traefik.tls.stores.default.defaultgeneratedcert.domain.sans=*.ia.c12z.de"
+      - "traefik.tls.stores.default.defaultgeneratedcert.domain.main=${CRT_DOMAIN_MAIN}"
+      - "traefik.tls.stores.default.defaultgeneratedcert.domain.sans=${CRT_DOMAIN_SANS}"
     networks:
       traefik:
       default:
       srv:
-        ipv4_address: 10.0.0.4
+        ipv4_address: ${SRV_IP}
     ports:
       - 80:80
       - 443:443

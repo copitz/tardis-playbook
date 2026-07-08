@@ -1,0 +1,51 @@
+traefik_domain: "ia.{{ domain }}"
+
+stacks:
+  samba:
+    ip: 10.0.0.3
+    domain: "nas.{{ domain }}"
+  traefik:
+    ip: 10.0.0.4
+    domain: "{{ traefik_domain }}"
+    crt_domain_main: "*.{{ domain }}"
+    crt_domain_sans: "*.{{ traefik_domain }}"
+    crt_email: "intra-apps@{{ domain }}"
+  hass:
+    domain: "hass.{{ domain }}"
+    cname: "{{ traefik_domain }}"
+  home:
+    domain: "home.{{ domain }}"
+    cname: "{{ traefik_domain }}"
+  jellyfin:
+    domain: "jelly.{{ domain }}"
+    cname: "{{ traefik_domain }}"
+    services:
+      m3u_editor:
+        domain: "jellytv.{{ domain }}"
+        cname: "{{ traefik_domain }}"
+  frigate:
+    domain: "frigate.{{ domain }}"
+    cname: "{{ traefik_domain }}"
+  mqtt:
+    domain: "mqtt.{{ domain }}"
+    cname: "{{ traefik_domain }}"
+  immich:
+    domain: "img.{{ domain }}"
+    cname: "{{ traefik_domain }}"
+  arr:
+    services:
+      whoami:
+        domain: "whoamiarr.{{ domain }}"
+        cname: "{{ traefik_domain }}"
+      sabnzbd:
+        domain: "sabnzbd.{{ domain }}"
+        cname: "{{ traefik_domain }}"
+      prowlarr:
+        domain: "prowlarr.{{ domain }}"
+        cname: "{{ traefik_domain }}"
+      radarr:
+        domain: "radarr.{{ domain }}"
+        cname: "{{ traefik_domain }}"
+      jellyseerr:
+        domain: "jellywish.{{ domain }}"
+        cname: "{{ traefik_domain }}"

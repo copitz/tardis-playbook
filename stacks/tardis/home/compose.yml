@@ -10,7 +10,7 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.http.services.home.loadbalancer.server.port=3000"
-      - "traefik.http.routers.home.rule=Host(`home.c12z.de`)"
+      - "traefik.http.routers.home.rule=Host(`${DOMAIN}`)"
       - "traefik.http.routers.home.entrypoints=https"
 
 networks:

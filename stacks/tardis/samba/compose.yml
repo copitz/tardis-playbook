@@ -21,7 +21,7 @@ services:
       DISABLE_FRUIT_DEFAULTS: 1
     networks:
       srv:
-        ipv4_address: 10.0.0.3
+        ipv4_address: ${SRV_IP}
     volumes:
       - /tank/assets/copitz:/shares/copitz
       - /tank/assets/lilla:/shares/lilla

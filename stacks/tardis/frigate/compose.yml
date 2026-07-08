@@ -23,7 +23,7 @@ services:
       - traefik
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.frigate.rule=Host(`frigate.c12z.de`)"
+      - "traefik.http.routers.frigate.rule=Host(`${DOMAIN}`)"
       - "traefik.http.routers.frigate.entrypoints=https"
       - "traefik.http.services.frigate.loadbalancer.server.port=8971"
     environment:
