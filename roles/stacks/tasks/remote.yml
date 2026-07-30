@@ -1,4 +1,11 @@
 ---
+- name: Make sure rsync is installed on the remote host
+  ansible.builtin.package:
+    name: rsync
+    state: present
+  vars:
+    ansible_become: true
+
 - name: Render stack templates and deploy changed stacks on remote hosts
   block:
 
@@ -22,10 +29,6 @@
       vars:
         stacks_render_dir: "{{ stacks_tmp_dir.path }}"
 
-    - name: Set stacks_src_dir to temp directory for rendering
-      set_fact:
-        stacks_src_dir: "{{ stacks_tmp_dir.path }}"
-
     # Prepare and find local and remote stacks and the difference between them
 
     - name: Ensure stacks directory exists
@@ -33,9 +36,13 @@
         path: /opt/stacks
         state: directory
         mode: "0755"
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+      vars:
+        ansible_become: true
 
     - name: Find local stack directories
-      command: bash -lc 'if [ -d """{{ stacks_src_dir }}""" ]; then cd """{{ stacks_src_dir }}""" && find . -maxdepth 1 -mindepth 1 -type d -printf "%f\n" | sort; else echo ""; fi'
+      command: bash -lc 'if [ -d """{{ stacks_tmp_dir.path }}""" ]; then cd """{{ stacks_tmp_dir.path }}""" && find . -maxdepth 1 -mindepth 1 -type d -printf "%f\n" | sort; else echo ""; fi'
       delegate_to: localhost
       register: local_stack_dirs
       changed_when: false
@@ -81,25 +88,23 @@
 
     - name: Dry-run push to detect changed stacks
       ansible.posix.synchronize:
-        src: "{{ stacks_src_dir }}/"
+        src: "{{ stacks_tmp_dir.path }}/"
         dest: /opt/stacks
         mode: push
         archive: yes
         recursive: yes
+        checksum: yes
         rsync_opts:
           - --dry-run
           - --itemize-changes
-          - --checksum
-      delegate_to: localhost
       register: stacks_push_dry
       changed_when: false
-      failed_when: false
 
     - name: Set list of changed stacks from dry-run
       set_fact:
         changed_stacks: >-
-          {{ stacks_push_dry.stdout_lines
-            | map('regex_search', '^[><ch*]\S*\s+([^/\s]+)/', '\\1')
+          {{ (stacks_push_dry.stdout_lines | default([]))
+            | map('regex_search', '^[><ch*]\S*\s+([^/\s]+)/', '\1')
             | select('truthy')
             | map('first')
             | unique
@@ -111,6 +116,9 @@
     - name: Push and update each changed stack sequentially
       ansible.builtin.include_tasks: remote_stack.yml
       loop: "{{ changed_stacks }}"
+      vars:
+        stack: "{{ item }}"
+        stacks_src_dir: "{{ stacks_tmp_dir.path }}"
       when:
         - changed_stacks is defined
         - changed_stacks | length > 0
@@ -121,4 +129,3 @@
         path: "{{ stacks_tmp_dir.path }}"
         state: absent
       delegate_to: localhost
-  when: ansible_connection != 'local'
