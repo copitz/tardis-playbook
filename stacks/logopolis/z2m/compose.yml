@@ -13,10 +13,11 @@ services:
     networks:
       - traefik
       - mqtt
-      - iot
+    devices:
+      - /dev/serial/by-id/usb-SONOFF_SONOFF_Dongle_Max_MG24_12cc6f1beaf6ef11be3cfa456d9880ab-if00-port0:/dev/ttyACM0
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.z2m.rule=Host(`z2m.c12z.de`)"
+      - "traefik.http.routers.z2m.rule=Host(`${DOMAIN:?}`)"
       - "traefik.http.routers.z2m.entrypoints=https"
       - "traefik.http.services.z2m.loadbalancer.server.port=8080"
 
@@ -26,9 +27,6 @@ secrets:
 
 networks:
   traefik:
-    external: true
-  iot:
-    name: 'iot-net'
     external: true
   mqtt:
     name: mqtt

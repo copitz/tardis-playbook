@@ -22,8 +22,6 @@ services:
     networks:
       traefik:
       default:
-      srv:
-        ipv4_address: ${SRV_IP}
     ports:
       - 80:80
       - 443:443
@@ -41,6 +39,3 @@ networks:
   traefik:
     name: traefik
     internal: true
-  srv:
-    name: "srv-net"
-    external: true
