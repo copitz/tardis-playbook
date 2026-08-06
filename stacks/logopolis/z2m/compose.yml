@@ -4,6 +4,10 @@ services:
     restart: unless-stopped
     volumes:
       - ${STACKS_DATA_DIR:?}/z2m/data:/app/data
+      - /run/udev:/run/udev:ro
+      - /dev/serial:/dev/serial
+    devices:
+      - /dev/ttyUSB0
     environment:
       TZ: Europe/Berlin
       Z2M_WATCHDOG: default
@@ -11,10 +15,9 @@ services:
       - source: z2m_secrets
         target: /app/data/secrets.yaml
     networks:
+      - default
       - traefik
       - mqtt
-    devices:
-      - /dev/serial/by-id/usb-SONOFF_SONOFF_Dongle_Max_MG24_12cc6f1beaf6ef11be3cfa456d9880ab-if00-port0:/dev/ttyACM0
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.z2m.rule=Host(`${DOMAIN:?}`)"
@@ -23,7 +26,7 @@ services:
 
 secrets:
   z2m_secrets:
-    file: ${STACKS_DATA_DIR:?}/z2m/.secrets.yaml
+    file: ./.secrets.yaml
 
 networks:
   traefik:

@@ -18,7 +18,6 @@ services:
       - "traefik.tcp.routers.mqtts.tls=true"
       - "traefik.tcp.routers.mqtts.service=mqtts-svc"
       - "traefik.tcp.services.mqtts-svc.loadbalancer.server.port=1883"
-      - "traefik.http.routers.mqtts.tls=true"
       - "traefik.http.routers.mqtts-ws.rule=Host(`${DOMAIN}`) && PathPrefix(`/mqtt`)"
       - "traefik.http.routers.mqtts-ws.entrypoints=mqtts-ws"
       - "traefik.http.routers.mqtts-ws.tls=true"

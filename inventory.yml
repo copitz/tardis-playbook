@@ -18,4 +18,4 @@ edge:
       ansible_user: "{{ logopolis_user }}"
       # Things like posix.synchronize need sshpass on the target, so we rather use ssh key auth
       #ansible_password: "{{ logopolis_password }}" 
-      ansible_become_password: "{{ logopolis_root_password }}"
+      ansible_become_password: "{{ logopolis_password }}"

@@ -1,0 +1,104 @@
+# Not pushed to the remote host (excluded from the stack sync in
+# roles/stacks/tasks/remote_stack.yml). Runs against the real target host,
+# after the stack's rendered files have been synced, to seed
+# ${stacks_data_dir}/mqtt/config with mosquitto's auth config.
+#
+# Requires stacks.mqtt.users (host_vars): a list of {user, password}. z2m
+# reuses its own broker credentials here (stacks.z2m.config.secrets), so
+# both stacks stay in sync on a single source of truth.
+
+- name: Seed mosquitto config as root
+  vars:
+    ansible_become: true
+  block:
+    - name: Ensure mosquitto config directory exists
+      file:
+        path: "{{ stacks_data_dir }}/{{ stack }}/config"
+        state: directory
+        owner: mosquitto
+        group: mosquitto
+        mode: "0755"
+
+    - name: Ensure mosquitto password file exists
+      ansible.builtin.file:
+        path: "{{ stacks_data_dir }}/{{ stack }}/config/passwords"
+        state: touch
+        mode: '0700'
+        owner: mosquitto
+        group: mosquitto
+
+    - name: Write mosquitto passwords checksum
+      copy:
+        dest: "{{ stacks_data_dir }}/{{ stack }}/config/passwords.checksum"
+        content: "{{ stacks.mqtt.users | sort(attribute='user') | to_json | hash('sha256') }}"
+        mode: "0600"
+        owner: mosquitto
+        group: mosquitto
+      register: mosquitto_passwords_checksum
+      no_log: true
+
+    - name: Set mosquitto user passwords
+      command: >
+        docker run --rm
+        -u mosquitto:mosquitto
+        -v {{ stacks_data_dir }}/{{ stack }}/config:/mosquitto/config
+        eclipse-mosquitto
+        mosquitto_passwd -b /mosquitto/config/passwords
+        {{ item.user }} {{ item.password }}
+      loop: "{{ stacks.mqtt.users }}"
+      loop_control:
+        label: "{{ item.user }}"
+      changed_when: true
+      no_log: true
+      when: mosquitto_passwords_checksum.changed
+
+    - name: Deploy mosquitto.conf (once, not overwritten on subsequent runs)
+      copy:
+        dest: "{{ stacks_data_dir }}/{{ stack }}/config/mosquitto.conf"
+        mode: "0644"
+        force: no
+        content: |
+          # =============================================================================
+          # Listeners
+          # =============================================================================
+
+          # Plain MQTT (internal only - Traefik forwards to this)
+          listener 1883 0.0.0.0
+
+          # WebSockets (internal only - Traefik forwards to this)
+          listener 9001 0.0.0.0
+          protocol websockets
+
+          # =============================================================================
+          # Authentication
+          # =============================================================================
+
+          allow_anonymous false
+          password_file /mosquitto/config/passwords
+
+          # =============================================================================
+          # Persistence
+          # =============================================================================
+
+          persistence true
+          persistence_location /mosquitto/data/
+
+          # =============================================================================
+          # Logging
+          # =============================================================================
+
+          log_dest stdout
+          log_type error
+          log_type warning
+          log_type notice
+          log_type information
+
+  rescue:
+    - name: Remove mosquitto passwords checksum after failure
+      file:
+        path: "{{ stacks_data_dir }}/{{ stack }}/config/passwords.checksum"
+        state: absent
+
+    - name: Re-raise error
+      fail:
+        msg: "{{ ansible_failed_result.msg | default('Seeding mosquitto config failed') }}"

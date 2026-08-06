@@ -10,6 +10,8 @@ stacks:
   z2m:
     domain: "z2m.{{ domain }}"
     cname: "{{ traefik_domain }}"
+    secrets: "{{ z2m_secrets }}"
   mqtt:
-    domain: "mqtt.{{ traefik_domain }}"
+    domain: "{{ stacks.z2m.domain }}"
     cname: "{{ traefik_domain }}"
+    users: "{{ mqtt_users }}"

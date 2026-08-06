@@ -4,3 +4,9 @@ network_wifi_psk: "{{ iot_wifi_password }}"
 
 general_sudoers:
   - "{{ ansible_user }}"
+
+general_open_ports:
+  - "22"
+  - "443"
+  - "8883" # MQTT over TLS
+  - "8083" # MQTT over TLS WebSocket

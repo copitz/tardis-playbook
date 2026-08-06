@@ -22,6 +22,7 @@ services:
     networks:
       traefik:
       default:
+    dns: 8.8.8.8
     ports:
       - 80:80
       - 443:443
