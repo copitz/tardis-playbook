@@ -116,8 +116,10 @@
     - name: Push and update each changed stack sequentially
       ansible.builtin.include_tasks: remote_stack.yml
       loop: "{{ changed_stacks }}"
+      loop_control:
+        label: "{{ stack }}"
+        loop_var: stack
       vars:
-        stack: "{{ item }}"
         stacks_src_dir: "{{ stacks_tmp_dir.path }}"
       when:
         - changed_stacks is defined

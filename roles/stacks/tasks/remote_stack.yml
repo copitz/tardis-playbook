@@ -6,6 +6,13 @@
     archive: yes
     recursive: yes
     checksum: yes
+    rsync_opts:
+      - "--exclude=ansible.yml"
+
+- name: Run stack's optional ansible.yml
+  include_tasks: run_stack_ansible.yml
+  vars:
+    stack_ansible_src: "{{ stacks_src_dir }}/{{ stack }}"
 
 - name: Check whether stack has running containers
   command: /usr/local/bin/stacks "{{ stack }}" ps -q

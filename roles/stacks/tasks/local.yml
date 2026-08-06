@@ -3,6 +3,23 @@
   vars:
     stacks_render_dir: "{{ playbook_dir }}/stacks/{{ inventory_hostname }}"
 
+- name: Find local stack directories
+  find:
+    paths: "{{ playbook_dir }}/stacks/{{ inventory_hostname }}"
+    file_type: directory
+  register: local_stack_dir_list
+  delegate_to: localhost
+
+- name: Run each stack's optional ansible.yml
+  include_tasks: run_stack_ansible.yml
+  loop: "{{ local_stack_dir_list.files }}"
+  loop_control:
+    loop_var: stack_dir_entry
+    label: "{{ stack_dir_entry.path | basename }}"
+  vars:
+    stack: "{{ stack_dir_entry.path | basename }}"
+    stack_ansible_src: "{{ stack_dir_entry.path }}"
+
 - name: Link /opt/stacks to the host stacks directory when running locally
   file:
     src: "{{ playbook_dir }}/stacks/{{ inventory_hostname }}"
