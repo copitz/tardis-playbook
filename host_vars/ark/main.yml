@@ -1,0 +1,8 @@
+general_sudoers:
+  - "{{ ansible_user }}"
+
+general_open_ports:
+  - "22"
+
+general_packages:
+  - "ethtool"

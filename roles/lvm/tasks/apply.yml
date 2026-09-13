@@ -14,6 +14,11 @@
     lv: "{{ item.name }}"
     size: "{{ item.size }}"
     shrink: false
+    # pvs/create_opts let an LV be pinned to specific disks or created with a
+    # non-default lvcreate --type (e.g. raid1 for mirroring), instead of the
+    # default of striping/spanning across whichever PVs the VG has free space on.
+    pvs: "{{ item.pvs | default(omit) }}"
+    opts: "{{ item.create_opts | default(omit) }}"
   loop: "{{ lvm_lvs }}"
   loop_control:
     label: "{{ item.name }} ({{ item.size }})"
@@ -30,18 +35,30 @@
   loop: "{{ lvm_lv_create_result.results }}"
   loop_control:
     label: "{{ item.item.vg }}/{{ item.item.name }}"
-  when: (item.size | float) > (item.item.size | regex_replace('[^0-9.]', '') | float)
+  # lvol only returns 'size' when it looked up an existing volume - a fresh
+  # creation (real, or simulated in --check) has no on-disk size to compare against.
+  when: item.size is defined and (item.size | float) > (item.item.size | regex_replace('[^0-9.]', '') | float)
+
+- name: Check whether logical volume devices exist yet
+  ansible.builtin.stat:
+    path: "/dev/{{ item.vg }}/{{ item.name }}"
+  loop: "{{ lvm_lvs }}"
+  loop_control:
+    label: "/dev/{{ item.vg }}/{{ item.name }}"
+  register: lvm_lv_device_stat
 
 - name: Create filesystems
   ansible.builtin.filesystem:
-    fstype: "{{ item.fs }}"
-    dev: "/dev/{{ item.vg }}/{{ item.name }}"
+    fstype: "{{ item.item.fs }}"
+    dev: "/dev/{{ item.item.vg }}/{{ item.item.name }}"
     # mkswap has no notion of growing a filesystem, so resizefs would fail
-    resizefs: "{{ item.fs != 'swap' }}"
-  loop: "{{ lvm_lvs }}"
-  ignore_errors: "{{ ansible_check_mode }}"
+    resizefs: "{{ item.item.fs != 'swap' }}"
+  loop: "{{ lvm_lv_device_stat.results }}"
   loop_control:
-    label: "{{ item.fs }}: /dev/{{ item.vg }}/{{ item.name }}"
+    label: "{{ item.item.fs }}: /dev/{{ item.item.vg }}/{{ item.item.name }}"
+  # In --check, an LV that would be newly created has no device yet to format -
+  # skip cleanly instead of letting the module fail on the missing device.
+  when: item.stat.exists or not ansible_check_mode
 
 # Swap has no mountpoint (fstab uses "none") and is already set up and active
 # by the Debian installer, so there's nothing left to mount here.

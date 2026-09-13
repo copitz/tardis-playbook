@@ -19,3 +19,9 @@ edge:
       # Things like posix.synchronize need sshpass on the target, so we rather use ssh key auth
       #ansible_password: "{{ logopolis_password }}" 
       ansible_become_password: "{{ logopolis_password }}"
+    ark:
+      ansible_host: ark.c12z.de
+      ansible_user: "{{ ark_user }}"
+      # Things like posix.synchronize need sshpass on the target, so we rather use ssh key auth
+      #ansible_password: "{{ ark_password }}" 
+      ansible_become_password: "{{ ark_password }}"

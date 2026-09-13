@@ -1,0 +1,25 @@
+# Groups by GID
+iam_groups:
+  1000:
+    name: ark
+  1001:
+    name: tardis
+
+# Users by UID. Provide name and groups. Optional: comment, shell (default false), home (default false).
+# home: true -> /home/{{name}}, false -> /nonexistent
+# shell: true -> /bin/bash (login); false -> /usr/sbin/nologin (service account)
+iam_users:
+  1000:
+    name: ark
+    group: ark
+    groups: ["cdrom", "floppy", "audio", "dip", "video", "plugdev", "users", "netdev"]
+    shell: true
+    home: true
+    comment: "ark"
+  1001:
+    name: tardis
+    group: tardis
+    groups: ["users"]
+    shell: false
+    home: false
+    comment: "tardis service account"

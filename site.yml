@@ -22,6 +22,8 @@
       tags: [iam]
     - role: docker
       tags: [docker]
+      # ark has no docker/stacks setup yet - opt it back in once it's ready.
+      when: inventory_hostname != 'ark'
     - role: drivers
       tags: [drivers]
 
@@ -36,3 +38,5 @@
   roles:
     - role: stacks
       tags: [stacks]
+      # ark has no docker/stacks setup yet - opt it back in once it's ready.
+      when: inventory_hostname != 'ark'

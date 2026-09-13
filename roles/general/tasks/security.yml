@@ -3,16 +3,24 @@
     name: ufw
     state: present
 
+- name: Check whether ufw is available
+  ansible.builtin.stat:
+    path: /usr/sbin/ufw
+  register: general_ufw_stat
+
+# On a fresh host, --check only simulates the install above, so ufw isn't
+# actually there yet to invoke - skip rather than let the module fail on it.
 - name: Open ports
   ansible.builtin.ufw:
     rule: allow
     port: "{{ item }}"
   loop: "{{ general_open_ports }}"
-  when: general_open_ports | length > 0
+  when: general_open_ports | length > 0 and (general_ufw_stat.stat.exists or not ansible_check_mode)
 
 - name: Enable UFW
   ansible.builtin.ufw:
     state: enabled
+  when: general_ufw_stat.stat.exists or not ansible_check_mode
 
 - name: Install sudo
   ansible.builtin.apt:
@@ -20,13 +28,14 @@
     state: present
   when: general_sudoers | length > 0
 
-- name: Ensure sudoers users exist
-  ansible.builtin.user:
-    name: "{{ item }}"
-    state: present
-  loop: "{{ general_sudoers }}"
+- name: Check whether visudo is available
+  ansible.builtin.stat:
+    path: /usr/sbin/visudo
+  register: general_visudo_stat
   when: general_sudoers | length > 0
 
+# Same reasoning as ufw above: validate shells out to visudo, which a
+# --check-simulated sudo install hasn't actually placed on disk yet.
 - name: Configure sudoers
   ansible.builtin.copy:
     dest: "/etc/sudoers.d/{{ item }}"
@@ -34,4 +43,4 @@
     mode: "0440"
     validate: "/usr/sbin/visudo -cf %s"
   loop: "{{ general_sudoers }}"
-  when: general_sudoers | length > 0
+  when: general_sudoers | length > 0 and (general_visudo_stat.stat.exists or not ansible_check_mode)

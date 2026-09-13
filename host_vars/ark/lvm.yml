@@ -1,0 +1,78 @@
+
+lvm_vgs:
+  # ark-vg holds the root filesystem and swap, on a single disk (/dev/sdc5).
+  - name: ark-vg
+    pvs:
+      - /dev/sdc5
+    pesize: 4M
+
+  # backups-vg holds restic repositories, one LV per backup tier, split
+  # across two 4TB disks (/dev/sda, /dev/sdb). Each tier's mirroring choice
+  # depends on whether its source data has a copy anywhere else (see LVs below).
+  - name: backups-vg
+    pvs:
+      - /dev/sda
+      - /dev/sdb
+    pesize: 4M
+
+lvm_lvs:
+  # root and swap are on the ark-vg volume group, which is on a single disk. The
+  # root LV is sized to fill the disk, and swap is sized to match the system's RAM. 
+  - name: root
+    vg: ark-vg
+    size: 13.67G
+    mount: /
+    fs: ext4
+    opts: errors=remount-ro
+    fsck_pass: 1
+  - name: swap_1
+    vg: ark-vg
+    size: 1.23G
+    mount: none
+    fs: swap
+    opts: sw
+    fsck_pass: 0
+
+  # assets: NAS media/documents. No other copy exists anywhere, so this repo
+  # is mirrored (raid1) across both disks - losing a single disk must not be
+  # able to take out the only backup of this data.
+  - name: assets
+    vg: backups-vg
+    size: 1.5T
+    pvs:
+      - /dev/sda
+      - /dev/sdb
+    create_opts: --type raid1 -m 1
+    mount: /mnt/backup/assets
+    fs: ext4
+    opts: errors=remount-ro
+    fsck_pass: 2
+
+  # configs: Docker volume configs (Home Assistant, Zigbee2MQTT). Also no
+  # other copy exists, so mirrored for the same reason as assets.
+  - name: configs
+    vg: backups-vg
+    size: 40G
+    pvs:
+      - /dev/sda
+      - /dev/sdb
+    create_opts: --type raid1 -m 1
+    mount: /mnt/backup/configs
+    fs: ext4
+    opts: errors=remount-ro
+    fsck_pass: 2
+
+  # systems: repo for anything Ansible can rebuild from scratch, so raw
+  # redundancy isn't the point here. It's deliberately pinned to /dev/sda
+  # only (linear, no striping/spanning) so a failure of the disk backing this
+  # tier is isolated from assets/configs, and vice versa - the goal is disk
+  # failure isolation between tiers, not mirroring within this one.
+  - name: systems
+    vg: backups-vg
+    size: 40G
+    pvs:
+      - /dev/sda
+    mount: /mnt/backup/systems
+    fs: ext4
+    opts: errors=remount-ro
+    fsck_pass: 2
