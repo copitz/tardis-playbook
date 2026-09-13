@@ -1,0 +1,155 @@
+#!/bin/bash
+
+# Load HOST, MAC, SSH_USER, SERVICE from config
+SCRIPT_DIR="$(dirname "$(realpath "$0")")"
+source "$SCRIPT_DIR/host-config"
+
+# Run a command as root, using sudo if we're not already root.
+as_root() {
+    if [[ $EUID -eq 0 ]]; then
+        "$@"
+    else
+        sudo "$@"
+    fi
+}
+
+# Run a command over SSH on the target host. Host key checking is disabled
+# since PBS gets reinstalled/its key regenerated occasionally, and BatchMode
+# would otherwise make ssh refuse an unknown/changed key outright instead of
+# prompting (there's no one around to answer the prompt anyway).
+run_ssh() {
+    ssh -o ConnectTimeout=5 -o BatchMode=yes \
+        -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+        "$SSH_USER@$HOST" "$@"
+}
+
+# Find a command's absolute path, also checking the sbin dirs since tools
+# like etherwake install there and a non-root user's PATH usually excludes
+# them, even though the tool itself is available (and will need running via
+# as_root anyway).
+find_cmd() {
+    local bin="$1" IFS=:
+    local dir dirs=($PATH /usr/local/sbin /usr/sbin /sbin)
+    for dir in "${dirs[@]}"; do
+        if [[ -x "$dir/$bin" ]]; then
+            echo "$dir/$bin"
+            return 0
+        fi
+    done
+    return 1
+}
+
+# Send a Wake-on-LAN magic packet. etherwake sends a raw L2 frame directly
+# on an interface rather than a routed UDP broadcast, so it's needed when
+# the target isn't on the host's default interface, e.g. it's on a VLAN
+# bridge such as br-srv the host has no IP on (see roles/network-trunked) -
+# hence it's preferred whenever WOL_INTERFACE is set, or as a fallback when
+# wakeonlan isn't installed. It needs a raw socket (CAP_NET_RAW), so it must
+# run as root; wakeonlan needs no special privileges.
+send_wol() {
+    local mac="$1" wakeonlan_bin etherwake_bin
+
+    wakeonlan_bin=$(find_cmd wakeonlan)
+    etherwake_bin=$(find_cmd etherwake)
+
+    if [[ -n "$WOL_INTERFACE" ]] || [[ -z "$wakeonlan_bin" ]]; then
+        if [[ -z "$etherwake_bin" ]]; then
+            if [[ -n "$WOL_INTERFACE" ]]; then
+                echo "❌ ERROR: etherwake is not installed. Install it with: apt install etherwake" >&2
+            else
+                echo "❌ ERROR: etherwake or wakeonlan is required to send a Wake-on-LAN packet." >&2
+                echo "Install etherwake with: apt install etherwake" >&2
+                echo "or install wakeonlan with: apt install wakeonlan" >&2
+            fi
+            return 1
+        fi
+        local cmd=("$etherwake_bin")
+        [[ -n "$WOL_INTERFACE" ]] && cmd+=(-i "$WOL_INTERFACE")
+        cmd+=("$mac")
+        as_root "${cmd[@]}"
+    else
+        "$wakeonlan_bin" "$mac"
+    fi
+}
+
+# Print a message classifying a failed ssh/run_ssh invocation's output, the
+# same way regardless of where the failure happened.
+report_ssh_error() {
+    local output="$1"
+
+    if is_permission_denied "$output"; then
+        echo "❌ ERROR: SSH login failed due to invalid credentials!"
+    elif echo "$output" | grep -q "Connection refused"; then
+        echo "⚠️ ERROR: SSH connection refused! Is SSH running on $HOST?"
+    elif echo "$output" | grep -q "No route to host"; then
+        echo "⚠️ ERROR: No route to host! Network issue?"
+    else
+        echo "⚠️ SSH Error: $output"
+    fi
+}
+
+is_permission_denied() {
+    echo "$1" | grep -q "Permission denied"
+}
+
+# Check if the configured service is active on the target (if SERVICE is set)
+report_service_status() {
+    if [[ -z "$SERVICE" ]]; then
+        return 0
+    fi
+
+    local output
+    output=$(run_ssh "systemctl is-active $SERVICE" 2>&1)
+    local code=$?
+
+    if [[ $code -eq 0 ]]; then
+        echo "✅ $SERVICE is running on $HOST!"
+        return 0
+    fi
+
+    report_ssh_error "$output"
+    return 1
+}
+
+# Poll until SSH is reachable, but fail fast on an auth error instead of
+# retrying forever with a key that will never work.
+wait_for_ssh() {
+    local output
+    while true; do
+        output=$(run_ssh exit 2>&1)
+        local code=$?
+
+        [[ $code -eq 0 ]] && return 0
+
+        if is_permission_denied "$output"; then
+            report_ssh_error "$output"
+            return 1
+        fi
+
+        sleep 2
+    done
+}
+
+# Ping HOST
+if ping -c 1 -W 2 "$HOST" &>/dev/null; then
+    echo "✅ $HOST is online!"
+    report_service_status
+    exit $?
+else
+    echo "❌ $HOST is OFFLINE!"
+    echo "🔄 Sending Wake-on-LAN packet to $MAC..."
+    send_wol "$MAC" || exit 1
+
+    echo "⏳ Waiting for $HOST to come online..."
+    while ! ping -c 1 -W 2 "$HOST" &>/dev/null; do
+        sleep 5
+    done
+    echo "✅ $HOST is now online!"
+
+    echo "⏳ Waiting for SSH to become available..."
+    wait_for_ssh || exit 1
+    echo "✅ SSH is now available!"
+
+    report_service_status
+    exit $?
+fi
