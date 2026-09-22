@@ -1,0 +1,19 @@
+---
+# "Ensure ark is powered on and reachable" moved to tasks/wake_server.yml,
+# imported as a pre_task in site.yml (before fact gathering) rather than
+# run from here - see the comment there for why.
+
+- name: Ensure /opt/backup exists
+  ansible.builtin.file:
+    path: /opt/backup
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+# The restic REST server only runs on backup_server_host (see
+# group_vars/all/main.yml) - every other host is just a client of it.
+- import_tasks: server.yml
+  when: inventory_hostname == backup_server_host
+
+- import_tasks: client.yml

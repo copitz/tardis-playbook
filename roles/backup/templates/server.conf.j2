@@ -1,0 +1,24 @@
+# Backup server (restic-rest-server) - see roles/backup. Sourced by
+# ensure-server-on (HOST/MAC/PORT, to wait for it) and by
+# backup.sh/restore.sh (RESTIC_REPOSITORY_BASE/RESTIC_PASSWORD, to back
+# up/restore against it).
+HOST="{{ backup_server_wol_host }}"  # Backup server hostname or IP
+MAC="{{ backup_server_wol_mac }}"    # Backup server MAC address for Wake-on-LAN
+PORT="{{ backup_server_port }}"      # restic-rest-server port to test readiness against
+SSH_USER="{{ hostvars[backup_server_host].ansible_user }}"  # For ensure-server-on --systemd-only
+{% if backup_server_password is defined %}
+# This host's own private-repos root on the backup server (see
+# tasks/client.yml, which creates the {{ inventory_hostname }} htpasswd user
+# this authenticates as) - backup.sh/restore.sh append <tier>[/<key>] to
+# this to get each entry's own repository.
+RESTIC_REPOSITORY_BASE="rest:http://{{ inventory_hostname }}:{{ backup_server_password }}@{{ backup_server_wol_host }}:{{ backup_server_port }}"
+{% endif %}
+{% if backup_restic_password is defined %}
+# This host's restic repository encryption password (same for every entry -
+# see backup.sh.j2/restore.sh.j2; defaults to backup_server_password above,
+# see defaults/main.yml) - kept root-only here rather than typed in at
+# invocation, same as RESTIC_REPOSITORY_BASE above. backup.sh/restore.sh
+# export this themselves before calling restic, since restic reads it
+# straight out of its process environment.
+RESTIC_PASSWORD="{{ backup_restic_password }}"
+{% endif %}

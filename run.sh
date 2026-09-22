@@ -71,4 +71,4 @@ else
   FLAGS+=("--skip-tags" "manual")
 fi
 
-ansible-playbook site.yml -i inventory.yml --ask-become-pass "${FLAGS[@]}"
+ansible-playbook site.yml -i inventory.yml "${FLAGS[@]}"

@@ -3,6 +3,7 @@ general_sudoers:
 
 general_open_ports:
   - "22"
+  - "{{ backup_server_port }}" # This is the backup server - see backup.yml
 
 general_packages:
   - "ethtool"

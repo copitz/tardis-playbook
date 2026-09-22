@@ -1,0 +1,33 @@
+# Imported directly from site.yml's pre_tasks (before gather_facts runs -
+# see the comment there for why) rather than from tasks/main.yml, so it
+# still needs its own task file instead of just being the top of main.yml.
+#
+# Delegated to localhost (the control node) rather than running on
+# whichever host is currently being provisioned: it already has to reach
+# every managed host, including ark itself, over SSH for Ansible's own
+# sake, so the --systemd-only check can ride on that same access - a
+# self-check of ark SSHing to itself would need loopback SSH access that
+# isn't otherwise set up. Bounded internally by ensure-server-on's own
+# WAKE_TIMEOUT rather than an async/poll here - the script module doesn't
+# support async.
+- name: Ensure ark is powered on and reachable
+  ansible.builtin.script:
+    cmd: >-
+      {{ role_path }}/files/ensure-server-on
+      --host {{ backup_server_wol_host }}
+      --mac {{ backup_server_wol_mac }}
+      --systemd-only
+      --ssh-user {{ hostvars[backup_server_host].ansible_user }}
+  delegate_to: localhost
+  changed_when: false
+  # Only ark itself needs waking regardless of how many hosts this play is
+  # running against - without this, the same wake-up (and, if it fails, the
+  # same error) happens/is reported once per host in the play.
+  run_once: true
+  # Nothing here needs privilege, and running as root (the global
+  # ansible_become: yes default) would mean the --systemd-only SSH check
+  # authenticates as root rather than as --ssh-user - if root's own SSH
+  # key/known_hosts don't already trust ark the same way, it fails silently
+  # (BatchMode=yes suppresses any prompt) and looks identical to ark just
+  # not being ready yet.
+  become: false

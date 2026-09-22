@@ -1,0 +1,54 @@
+#!/bin/bash
+set -euo pipefail
+
+# State file tracking when an SSH or restic-rest-server session was last
+# seen active. Touched whenever either exists; once it's stale for
+# IDLE_TIMEOUT, power off. Living under /run means a reboot always starts a
+# fresh idle window.
+STATE_FILE="/run/idle-poweroff.last-active"
+IDLE_TIMEOUT=600 # ~10 minutes
+
+# Clients now back up/restore against restic-rest-server (see
+# backup.sh.j2/restore.sh.j2), not just manage the host over SSH - an
+# in-progress backup with no active SSH session must not get powered off
+# out from under it. Read the port from restic-rest-server's own deployed
+# config (see tasks/server.yml's "Configure restic-rest-server") rather
+# than hardcoding/templating a second copy of it here - it may not exist
+# yet on a freshly provisioned host (this timer starts before that config
+# is written), in which case there's nothing to check yet either, same as
+# before restic-rest-server was introduced.
+restic_port=""
+if [[ -f /etc/default/restic-rest-server ]]; then
+    restic_port=$(grep -oP '^LISTEN\s*=\s*:\K[0-9]+' /etc/default/restic-rest-server || true)
+fi
+
+# state connected (established, plus anything still winding down - most
+# usefully time-wait) rather than just established: this runs once a
+# minute (see idle-poweroff.timer), and a short-lived backup connection can
+# open, transfer, and close entirely between two polls - established alone
+# would then never see it at all. A closed connection lingers in time-wait
+# for ~60s (Linux's fixed TIME_WAIT length), which is what actually keeps
+# it visible to the next poll.
+if [[ -n "$restic_port" ]]; then
+    active_sessions=$(ss -Htn state connected "( sport = :22 or sport = :$restic_port )" | wc -l)
+else
+    active_sessions=$(ss -Htn state connected sport = :22 | wc -l)
+fi
+
+if [[ "$active_sessions" -gt 0 ]]; then
+    touch "$STATE_FILE"
+    exit 0
+fi
+
+if [[ ! -f "$STATE_FILE" ]]; then
+    # No record yet (e.g. just booted) - start the idle clock now rather
+    # than assuming it's already been idle for a while.
+    touch "$STATE_FILE"
+    exit 0
+fi
+
+idle_for=$(($(date +%s) - $(stat -c %Y "$STATE_FILE")))
+if ((idle_for >= IDLE_TIMEOUT)); then
+    logger -t idle-poweroff "No SSH or restic-rest-server connections for ${idle_for}s, powering off"
+    systemctl poweroff
+fi

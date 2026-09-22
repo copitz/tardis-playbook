@@ -1,0 +1,271 @@
+#!/bin/bash
+
+# HOST/MAC/PORT default from the deployed config (present once tasks/client.yml
+# has run) and can be overridden - or, for callers running this straight out
+# of files/ before that config exists yet (see tasks/main.yml), entirely
+# supplied - via flags. -r rather than -f: the file is root-only (it also
+# carries RESTIC_REPOSITORY_BASE, see server.conf.j2), so an unprivileged
+# caller can't read it - treat that the same as it not existing (fall
+# through to needing everything via flags) instead of a raw "Permission
+# denied" crash.
+[[ -r /opt/backup/server.conf ]] && source /opt/backup/server.conf
+
+# When set (--systemd-only), readiness is checked by SSHing to $HOST and
+# waiting for systemd to report the boot has reached a final state, instead
+# of probing restic-rest-server - used by tasks/main.yml, which runs before
+# restic-rest-server is necessarily even installed and just needs to know
+# the host is up enough for Ansible to manage it over SSH.
+SYSTEMD_ONLY=false
+
+# When set (--broadcast-wol), the WoL packet goes to the local broadcast
+# address instead of $HOST's own resolved IP - see send_wol() below for why
+# that's not the default.
+BROADCAST_WOL=false
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --host) HOST="$2"; shift 2 ;;
+        --mac) MAC="$2"; shift 2 ;;
+        --port) PORT="$2"; shift 2 ;;
+        --systemd-only) SYSTEMD_ONLY=true; shift ;;
+        --ssh-user) SSH_USER="$2"; shift 2 ;;
+        --broadcast-wol) BROADCAST_WOL=true; shift ;;
+        *) echo "Unknown argument: $1" >&2; exit 1 ;;
+    esac
+done
+
+: "${HOST:?HOST required (--host, or server.conf)}"
+: "${MAC:?MAC required (--mac, or server.conf)}"
+if $SYSTEMD_ONLY; then
+    SERVICE_LABEL="systemd boot state (via SSH)"
+    # Otherwise ssh defaults to the *local* username, which has no reason
+    # to match the account actually authorized on $HOST - that mismatch
+    # fails silently under BatchMode=yes (no password prompt, just a
+    # denial) and looks identical to "not booted yet".
+    : "${SSH_USER:?SSH_USER required (--ssh-user, or server.conf) when --systemd-only is used}"
+else
+    : "${PORT:?PORT required (--port, or server.conf) unless --systemd-only is used}"
+    SERVICE_LABEL="restic-rest-server"
+fi
+
+# How long to wait for a host that still answers ping, but isn't yet
+# answering $SERVICE_LABEL, to actually finish going offline - covers
+# the race where this script starts just as idle-poweroff (see
+# roles/backup/files/idle-poweroff) has triggered "systemctl poweroff" on
+# it: the host stays pingable for a few seconds after $SERVICE_LABEL has
+# already stopped, which would otherwise look like a hard failure.
+SHUTDOWN_GRACE=90
+
+# How often to resend the WoL packet while waiting for the host to come
+# back online. A packet sent while the host is still finishing a shutdown
+# can go out before its NIC has actually armed for Wake-on-LAN and be
+# ignored, so a single send isn't reliable.
+RESEND_INTERVAL=30
+
+# Overall cap on how long to wait for the host to come online and its
+# service to become available, enforced with bash's own $SECONDS rather
+# than an external "timeout" wrapper - callers like tasks/main.yml run this
+# via the script module, which (unlike command) has no async/timeout
+# support of its own.
+WAKE_TIMEOUT=300
+wake_deadline=$((SECONDS + WAKE_TIMEOUT))
+
+# -c 2 rather than -c 1: ping succeeds if *any* reply comes back, and a
+# freshly-woken host's link is prone to losing the odd single probe (NIC/
+# switch renegotiation, spanning-tree delay) - one extra packet is cheap
+# insurance against a false negative on an otherwise-live host.
+host_is_up() {
+    ping -c 2 -W 2 "$HOST" &>/dev/null
+}
+
+# Any HTTP response (even an auth-required 401, since --private-repos is on)
+# proves restic-rest-server is actually accepting connections. It's one of
+# the last things to come up during boot, so this alone is a reliable
+# readiness signal for both backing up against it and for Ansible managing
+# the host over SSH right after.
+rest_server_is_up() {
+    curl -s -o /dev/null -m 5 "http://$HOST:$PORT/"
+}
+
+# With --systemd-only, restic-rest-server may not even be installed yet
+# (see tasks/main.yml), so readiness is instead: can we SSH in at all, and
+# has the other end finished booting. --wait blocks until systemd reaches a
+# final state (running/degraded/maintenance) rather than returning
+# "starting" immediately - note that this means a *degraded* boot (e.g. an
+# unrelated failed unit) reports not-ready same as still-booting, since
+# is-system-running only exits 0 for "running".
+systemd_is_up() {
+    # stdout/stderr recorded separately rather than left to print live: on
+    # a normal not-ready-yet poll there's nothing worth showing every 2s,
+    # but an SSH-level failure (auth, host key, connection) needs surfacing
+    # - and unlike rest_server_is_up's curl, BatchMode=yes means it'll
+    # never prompt, so the captured stderr is the only way such a failure
+    # would ever be seen at all.
+    local stdout stderr_file stderr rc
+    stderr_file=$(mktemp)
+    stdout=$(ssh -o BatchMode=yes -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new \
+        -l "$SSH_USER" "$HOST" "systemctl is-system-running --wait" 2>"$stderr_file")
+    rc=$?
+    stderr=$(<"$stderr_file")
+    rm -f "$stderr_file"
+
+    # ssh reserves exit code 255 for its own connection/auth/host-key
+    # failures, as opposed to the remote command's exit code (which is
+    # whatever systemctl returned, e.g. 1 for "degraded") - that's a real
+    # problem no amount of retrying fixes, so fail the whole script now
+    # instead of silently retrying it every couple seconds until
+    # WAKE_TIMEOUT and only then giving up with a generic message.
+    if ((rc == 255)); then
+        echo "⚠️ Failed to get ${SERVICE_LABEL}: $stderr" >&2
+        exit 1
+    fi
+
+    [[ "$rc" -eq 0 && "$stdout" == "running" ]]
+}
+
+service_is_up() {
+    if $SYSTEMD_ONLY; then
+        systemd_is_up
+    else
+        rest_server_is_up
+    fi
+}
+
+# By default, sends a Wake-on-LAN magic packet as a UDP unicast to the
+# target's own IP (resolved from HOST via DNS), rather than broadcasting on
+# the local subnet like wakeonlan, or writing a raw L2 frame to a specific
+# interface like etherwake. Ordinary IP routing gets it to the right switch
+# port via the gateway's ARP cache, so this reaches a sleeping host even
+# across VLAN boundaries - PROVIDED that ARP entry actually exists. A fully
+# powered-off host can't itself answer an ARP request, so unless something
+# (a static ARP entry on the router, a cache entry still warm from before
+# it went down) already has HOST's IP-to-MAC mapping on hand, the unicast
+# packet has no destination MAC to be sent to and never goes out at all.
+#
+# --broadcast-wol sends to the local broadcast address instead, which needs
+# no ARP resolution (every NIC on the segment just gets it), at the cost of
+# not crossing VLAN boundaries - only useful if this host and HOST actually
+# share a broadcast domain.
+send_wol() {
+    local mac="$1"
+
+    python3 - "$HOST" "$mac" "$BROADCAST_WOL" <<'EOF'
+import socket
+import sys
+
+host, mac, broadcast = sys.argv[1], sys.argv[2], sys.argv[3] == "true"
+mac_bytes = bytes.fromhex(mac.replace(":", "").replace("-", ""))
+if len(mac_bytes) != 6:
+    sys.exit(f"Invalid MAC address: {mac}")
+
+packet = b"\xff" * 6 + mac_bytes * 16
+
+with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+    if broadcast:
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+        ip = "255.255.255.255"
+    else:
+        ip = socket.gethostbyname(host)
+
+    print(f"Sending Wake-on-LAN packet to {mac} at {ip}:9...")
+    sock.sendto(packet, (ip, 9))
+EOF
+}
+
+# Shared by the timeout and the Ctrl+C cases below - both mean the WoL
+# packet plausibly never reached $HOST at all.
+print_wol_hints() {
+    echo "   The WoL packet may just not be reaching it. Some things to check:" >&2
+    if ! $BROADCAST_WOL; then
+        echo "   - Unicast WoL (the default) needs $HOST's IP already mapped to its MAC in this host's/the router's ARP table - a host that's actually off can't answer an ARP request itself. Either add a static ARP entry for it, or try --broadcast-wol (only works if this host and $HOST share a broadcast domain/subnet)." >&2
+    else
+        echo "   - --broadcast-wol only reaches hosts on the same broadcast domain/subnet as this one - if $HOST is on a different VLAN/subnet, this can't reach it at all; drop --broadcast-wol and use a static ARP entry instead." >&2
+    fi
+    echo "   - Is Wake-on-LAN actually enabled on $HOST's NIC (e.g. 'ethtool <iface>' should show 'Wake-on: g'), and does that setting survive a reboot/power cycle rather than resetting?" >&2
+    echo "   - Does the switch port $HOST is plugged into pass WoL frames through (some managed switches/firewalls filter them)?" >&2
+    echo "   - Is $MAC actually still $HOST's active NIC's MAC address?" >&2
+}
+
+# Wait up to SHUTDOWN_GRACE seconds for a host that's still answering ping
+# to actually go offline. Returns failure if it's still up once that grace
+# period elapses, so a genuinely broken (rather than mid-shutdown) host
+# doesn't get mistaken for the latter and left waiting forever.
+wait_for_shutdown() {
+    local waited=0
+    while host_is_up; do
+        ((waited >= SHUTDOWN_GRACE)) && return 1
+        sleep 2
+        ((waited += 2))
+    done
+    return 0
+}
+
+if host_is_up; then
+    echo "✅ $HOST is online!"
+
+    if service_is_up; then
+        echo "✅ $SERVICE_LABEL is up on $HOST!"
+        exit 0
+    fi
+
+    # $SERVICE_LABEL isn't answering yet, but not because the host is
+    # hard down - this combination usually means idle-poweroff just
+    # triggered and $HOST is mid-shutdown, so give it a chance to actually
+    # go offline before falling through to the WoL flow below.
+    echo "⏳ $HOST answered ping but $SERVICE_LABEL isn't up - it may be shutting down, waiting to see if it goes offline..."
+    if ! wait_for_shutdown; then
+        echo "⚠️ $HOST is still online but $SERVICE_LABEL never became available - giving up." >&2
+        exit 1
+    fi
+fi
+
+echo "❌ $HOST is OFFLINE!"
+echo "🔄 Sending Wake-on-LAN packet to $MAC..."
+send_wol "$MAC" || exit 1
+
+echo "⏳ Waiting for $HOST to come online..."
+
+# Once we've resent the WoL packet at least once, waiting has already gone
+# on longer than a normal boot - if the user gives up at that point (Ctrl+C)
+# they're plausibly cancelling because it looks stuck, not just because
+# they changed their mind, so show the same hints a timeout would rather
+# than just quitting silently. Nothing is shown for a cancel before that
+# first resend, since there's nothing suspicious about it yet.
+wol_resent=false
+on_wait_interrupt() {
+    echo "" >&2
+    if $wol_resent; then
+        echo "⚠️ Cancelled while still waiting for $HOST to come online." >&2
+        print_wol_hints
+    fi
+    exit 130
+}
+trap on_wait_interrupt INT
+
+elapsed=0
+while ! host_is_up; do
+    if ((SECONDS >= wake_deadline)); then
+        echo "⚠️ Timed out after ${WAKE_TIMEOUT}s waiting for $HOST to come online." >&2
+        print_wol_hints
+        exit 1
+    fi
+    sleep 5
+    ((elapsed += 5))
+    if ((elapsed % RESEND_INTERVAL == 0)); then
+        echo "🔄 Still offline, resending Wake-on-LAN packet..."
+        wol_resent=true
+        send_wol "$MAC" || exit 1
+    fi
+done
+trap - INT
+echo "✅ $HOST is now online!"
+
+echo "⏳ Waiting for $SERVICE_LABEL to become available..."
+until service_is_up; do
+    if ((SECONDS >= wake_deadline)); then
+        echo "⚠️ Timed out after ${WAKE_TIMEOUT}s waiting for $SERVICE_LABEL to become available." >&2
+        exit 1
+    fi
+    sleep 2
+done
+echo "✅ $SERVICE_LABEL is now available!"

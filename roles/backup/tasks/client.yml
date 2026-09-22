@@ -1,0 +1,172 @@
+# ensure-server-on wakes the backup server up over WoL and confirms
+# restic-rest-server is actually reachable before a backup can run against
+# it - every client needs this (see backup.sh.j2). The Wake-on-LAN packet
+# itself is sent with Python's stdlib (see roles/backup/files/ensure-server-on),
+# so there's no extra package to install for that.
+- name: Install ensure-server-on script
+  ansible.builtin.copy:
+    src: ensure-server-on
+    dest: /opt/backup/ensure-server-on
+    owner: root
+    group: root
+    mode: "0755"
+
+# Also carries RESTIC_REPOSITORY_BASE (see server.conf.j2), which embeds
+# this host's restic-rest-server password - root-only, unlike the rest of
+# /opt/backup, on account of that.
+- name: Configure backup server connection
+  ansible.builtin.template:
+    src: server.conf.j2
+    dest: /opt/backup/server.conf
+    owner: root
+    group: root
+    mode: "0600"
+
+# backup.sh/restore.sh (below) shell out to the restic binary directly -
+# unlike the server side, there's no restic-rest-server-style package that
+# pulls it in as a dependency, so it needs installing explicitly here.
+- name: Install restic
+  ansible.builtin.apt:
+    name: restic
+    state: present
+
+# One backup/restore script pair per host, covering three source tiers -
+# system (same everywhere, backup_system), assets (per-host, explicit,
+# backup_assets), configs (this host's stacks data dir, backup_configs).
+# See defaults/main.yml for where those come from. Repository location and
+# HTTP-auth credentials come from /opt/backup/server.conf above; restic's
+# own repository encryption password is deliberately left to be supplied
+# via environment at invocation time instead - see backup.sh.j2.
+- name: Generate backup/restore scripts
+  ansible.builtin.template:
+    src: "{{ item }}.sh.j2"
+    dest: "/opt/backup/{{ item }}"
+    owner: root
+    group: root
+    mode: "0750"
+  loop:
+    - backup
+    - restore
+
+# Provision this host's own corner of the restic REST server - done here
+# rather than in tasks/server.yml so running the role for a single client
+# doesn't depend on the server's own tasks having run first in the same
+# invocation (see backup_client_tiers / backup_tier_dirs in defaults/main.yml
+# for the tier-name mapping). Delegated to backup_server_host throughout.
+- name: Provision this host on the restic REST server
+  when: backup_client_tiers | length > 0
+  block:
+    - name: Ensure python3-passlib is present on the backup server
+      ansible.builtin.apt:
+        name: python3-passlib
+        state: present
+      delegate_to: "{{ backup_server_host }}"
+
+    # Same --check reasoning as tasks/server.yml: the restic-rest-server
+    # system user everything below chowns to (and the htpasswd file it
+    # writes into) only exist once the backup server's own restic-rest-server
+    # package is really installed - which this client-side block can't
+    # assume has happened yet under --check.
+    - name: Check whether restic-rest-server unit file exists on the backup server yet
+      ansible.builtin.stat:
+        path: /usr/lib/systemd/system/restic-rest-server.service
+      register: backup_restic_rest_server_unit_stat
+      delegate_to: "{{ backup_server_host }}"
+
+    - name: "Ensure {{ inventory_hostname }}'s tier directories exist on the backup server"
+      ansible.builtin.file:
+        path: "{{ backup_tiers_dir }}/{{ backup_tier_dirs[item] }}/{{ inventory_hostname }}"
+        state: directory
+        owner: restic-rest-server
+        group: restic-rest-server
+        mode: "0750"
+      loop: "{{ backup_client_tiers }}"
+      delegate_to: "{{ backup_server_host }}"
+      when: backup_restic_rest_server_unit_stat.stat.exists or not ansible_check_mode
+
+    # backup_assets/backup_configs entries each get their own repository
+    # under a subfolder keyed by their map key (see defaults/main.yml) -
+    # unlike backup_system, which has no key and so is fully covered by the
+    # tier directory itself above. restic-rest-server 404s on init rather
+    # than creating this subfolder itself, so it needs provisioning here too.
+    - name: "Ensure {{ inventory_hostname }}'s assets entry directories exist on the backup server"
+      ansible.builtin.file:
+        path: "{{ backup_tiers_dir }}/{{ backup_tier_dirs.assets }}/{{ inventory_hostname }}/{{ item }}"
+        state: directory
+        owner: restic-rest-server
+        group: restic-rest-server
+        mode: "0750"
+      loop: "{{ backup_assets.keys() | list }}"
+      delegate_to: "{{ backup_server_host }}"
+      when: backup_restic_rest_server_unit_stat.stat.exists or not ansible_check_mode
+
+    - name: "Ensure {{ inventory_hostname }}'s configs entry directories exist on the backup server"
+      ansible.builtin.file:
+        path: "{{ backup_tiers_dir }}/{{ backup_tier_dirs.configs }}/{{ inventory_hostname }}/{{ item }}"
+        state: directory
+        owner: restic-rest-server
+        group: restic-rest-server
+        mode: "0750"
+      loop: "{{ backup_configs.keys() | list }}"
+      delegate_to: "{{ backup_server_host }}"
+      when: backup_restic_rest_server_unit_stat.stat.exists or not ansible_check_mode
+
+    - name: "Ensure {{ inventory_hostname }}'s private directory exists on the backup server"
+      ansible.builtin.file:
+        path: "{{ backup_server_dir }}/{{ inventory_hostname }}"
+        state: directory
+        owner: restic-rest-server
+        group: restic-rest-server
+        mode: "0750"
+      delegate_to: "{{ backup_server_host }}"
+      when: backup_restic_rest_server_unit_stat.stat.exists or not ansible_check_mode
+
+    # restic-rest-server's --private-repos routing only matches requests one
+    # path segment below the username (confirmed by it 404ing - with nothing
+    # even reaching its own request logging - on a second nested segment) -
+    # so unlike the on-disk layout (tier dir, then a subfolder per key), the
+    # symlink tree exposed to the client has to stay flat: one top-level
+    # symlink per entry, named "<tier>-<key>" for keyed tiers (see below) or
+    # just "<tier>" for backup_system, which has no key.
+    - name: "Ensure {{ inventory_hostname }}'s system tier symlink exists on the backup server"
+      ansible.builtin.file:
+        path: "{{ backup_server_dir }}/{{ inventory_hostname }}/system"
+        src: "{{ backup_tiers_dir }}/{{ backup_tier_dirs.system }}/{{ inventory_hostname }}"
+        state: link
+      delegate_to: "{{ backup_server_host }}"
+      when: >-
+        'system' in backup_client_tiers
+        and (backup_restic_rest_server_unit_stat.stat.exists or not ansible_check_mode)
+
+    - name: "Ensure {{ inventory_hostname }}'s assets entry symlinks exist on the backup server"
+      ansible.builtin.file:
+        path: "{{ backup_server_dir }}/{{ inventory_hostname }}/assets-{{ item }}"
+        src: "{{ backup_tiers_dir }}/{{ backup_tier_dirs.assets }}/{{ inventory_hostname }}/{{ item }}"
+        state: link
+      loop: "{{ backup_assets.keys() | list }}"
+      delegate_to: "{{ backup_server_host }}"
+      when: backup_restic_rest_server_unit_stat.stat.exists or not ansible_check_mode
+
+    - name: "Ensure {{ inventory_hostname }}'s configs entry symlinks exist on the backup server"
+      ansible.builtin.file:
+        path: "{{ backup_server_dir }}/{{ inventory_hostname }}/configs-{{ item }}"
+        src: "{{ backup_tiers_dir }}/{{ backup_tier_dirs.configs }}/{{ inventory_hostname }}/{{ item }}"
+        state: link
+      loop: "{{ backup_configs.keys() | list }}"
+      delegate_to: "{{ backup_server_host }}"
+      when: backup_restic_rest_server_unit_stat.stat.exists or not ansible_check_mode
+
+    - name: "Add/update {{ inventory_hostname }}'s restic-rest-server user"
+      community.general.htpasswd:
+        path: /etc/restic-rest-server/users.htpasswd
+        name: "{{ inventory_hostname }}"
+        password: "{{ backup_server_password }}"
+        crypt_scheme: bcrypt
+        owner: root
+        group: restic-rest-server
+        mode: "0640"
+      delegate_to: "{{ backup_server_host }}"
+      when: >-
+        backup_server_password is defined
+        and (backup_restic_rest_server_unit_stat.stat.exists or not ansible_check_mode)
+      notify: restart restic-rest-server

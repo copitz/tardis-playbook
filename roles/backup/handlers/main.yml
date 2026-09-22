@@ -1,0 +1,12 @@
+# delegate_to is needed here even though the notifying tasks (tasks/server.yml
+# and tasks/client.yml) already delegate to the backup server themselves - a
+# notified handler does not inherit its notifier's delegate_to.
+- name: restart restic-rest-server
+  delegate_to: "{{ backup_server_host }}"
+  ansible.builtin.systemd:
+    name: restic-rest-server
+    state: restarted
+  # Skip under --check: a fresh backup server has no real unit installed yet
+  # to query. On a real run against a never-provisioned server, let this
+  # fail loudly instead - that's a real error worth surfacing.
+  when: not ansible_check_mode

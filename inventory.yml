@@ -1,25 +1,30 @@
 all:
   vars:
-    ansible_become: yes
-    ansible_become_method: su
-    ansible_environment:
-      PATH: "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+    common_config: &common_config
+      ansible_become: yes
+      ansible_become_method: su
+      ansible_environment:
+        PATH: "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 
 workstation:
   hosts:
     tardis:
+      <<: *common_config
       ansible_host: localhost
       ansible_connection: local
+      ansible_become_password: "{{ tardis_password }}"
 
 edge:
   hosts:
     logopolis:
+      <<: *common_config
       ansible_host: logopolis.c12z.de
       ansible_user: "{{ logopolis_user }}"
       # Things like posix.synchronize need sshpass on the target, so we rather use ssh key auth
       #ansible_password: "{{ logopolis_password }}" 
       ansible_become_password: "{{ logopolis_password }}"
     ark:
+      <<: *common_config
       ansible_host: ark.c12z.de
       ansible_user: "{{ ark_user }}"
       # Things like posix.synchronize need sshpass on the target, so we rather use ssh key auth

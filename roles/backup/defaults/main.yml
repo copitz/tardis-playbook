@@ -1,0 +1,82 @@
+# Backup source tiers for a backup client (see tasks/client.yml), matching
+# the three restic repos/LVs on the backup server (see host_vars/ark/lvm.yml).
+# Each entry is {path: <required>, exclude: [<restic --exclude patterns>],
+# oneFileSystem: <bool, default false>} - see restic_args() in backup.sh.j2
+# for how these render into restic's own flags. An exclude pattern without a
+# leading / is resolved against the entry's own path (e.g. "incoming" on an
+# entry with path /tank/assets excludes /tank/assets/incoming); give a
+# leading / for a pattern anchored elsewhere. Each entry also gets its own
+# restic repository (see backup.sh.j2 / restore.sh.j2), so assets/configs
+# are maps keyed by that entry's own subfolder name under the tier's folder
+# on the backup server, e.g. backup_assets.nas -> .../assets/<host>/nas:
+#   system:  the whole root filesystem, minus backup_system_excludes below
+#            and anything on another mount (oneFileSystem: true below) - a
+#            single entry, not a map, since there's only ever one system
+#            path per host and it needs no subfolder/key.
+#   assets:  irreplaceable data (e.g. NAS media/documents) - no sane default,
+#            a host with any must set backup_assets itself.
+#   configs: docker stack volumes - defaults to the whole stacks data dir.
+
+# Default excludes for the system tier below. A plain "/" backup needs to
+# skip the usual non-config noise: virtual/pseudo filesystems (also pruned
+# by oneFileSystem below, but some of these - e.g. /tmp - are often just
+# plain directories on the root fs, not their own mount), caches, Docker's
+# own storage, and stacks_data_dir itself (both already covered separately
+# by the configs tier, so excluded here to avoid double-backing them up).
+backup_system_excludes:
+  - /dev
+  - /proc
+  - /sys
+  - /run
+  - /tmp
+  - /var/tmp
+  - /var/cache
+  - /lost+found
+  - /var/lib/docker
+  - /swapfile
+  - /home/*/.cache
+  - "{{ stacks_data_dir }}"
+
+backup_system:
+  path: /
+  exclude: "{{ backup_system_excludes }}"
+  oneFileSystem: true
+
+backup_assets: {}
+
+backup_configs: "{{ {'stacks': {'path': stacks_data_dir}} if stacks_data_dir is defined else {} }}"
+
+# backup_password was renamed to backup_server_password - falls back to the
+# old name so existing host_vars/<host>/vault.yml files keep working until
+# renamed.
+backup_server_password: "{{ backup_password }}"
+
+# restic repository encryption password (see server.conf.j2 / backup.sh.j2) -
+# defaults to this host's restic-rest-server auth password (set per-host as
+# backup_server_password, e.g. in host_vars/<host>/vault.yml) when no
+# separate backup_restic_password is set for it. Stays undefined (rather
+# than erroring) when neither is set, same as backup_server_password itself.
+backup_restic_password: "{{ backup_server_password }}"
+
+# restic-rest-server (tasks/server.yml) serves a private per-user root
+# (--private-repos): each client only ever sees
+# {{ backup_server_dir }}/<hostname>/<tier>, symlinked (see tasks/client.yml)
+# into the real tier volume under backup_tiers_dir (host_vars/ark/lvm.yml).
+backup_server_port: 8000
+backup_server_dir: /var/backups
+backup_tiers_dir: /mnt/backups
+
+# Tier key (used below and as the private-repo subpath) -> physical
+# subdirectory name under backup_tiers_dir (matches the LV names in
+# host_vars/ark/lvm.yml).
+backup_tier_dirs:
+  system: systems
+  assets: assets
+  configs: configs
+
+# This host's tiers that actually have entries configured - drives which
+# symlinks get created for it on the backup server.
+backup_client_tiers: >-
+  {{ (['system'] if backup_system.path | default('') | length > 0 else [])
+     + (['assets'] if backup_assets | length > 0 else [])
+     + (['configs'] if backup_configs | length > 0 else []) }}

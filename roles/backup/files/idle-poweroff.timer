@@ -1,0 +1,15 @@
+[Unit]
+Description=Periodically run idle-poweroff.service
+
+[Timer]
+# Worst-case gap between polls is OnUnitActiveSec + AccuracySec - kept
+# comfortably under the ~60s a closed connection lingers in time-wait for
+# (see idle-poweroff's "state connected" comment), so a short backup
+# connection that opens and closes between two polls is still guaranteed
+# to still be visible at the next one.
+OnBootSec=30s
+OnUnitActiveSec=30s
+AccuracySec=5s
+
+[Install]
+WantedBy=timers.target

@@ -1,11 +1,37 @@
 ---
 - hosts: all
   environment: "{{ ansible_environment | default({}) }}"
+  # Facts are gathered explicitly below, after ark is confirmed awake -
+  # automatic gather_facts happens before any task (including pre_tasks),
+  # so with it left on, a sleeping ark fails to connect right there, gets
+  # marked UNREACHABLE, and every task for it (including the wake-up task
+  # itself) gets skipped for the rest of the play.
+  gather_facts: false
+  pre_tasks:
+    # See roles/backup/tasks/wake_server.yml for what this actually does -
+    # imported (rather than left as a normal part of the backup role's own
+    # tasks/main.yml) so it can run here, before gather_facts.
+    - import_role:
+        name: backup
+        tasks_from: wake_server.yml
+      tags: [always]
+      when: >-
+        backup_server_host in ansible_play_hosts_all
+        or (
+          ('backup' in ansible_run_tags or 'all' in ansible_run_tags)
+          and 'backup' not in ansible_skip_tags
+        )
+
+    - name: Gather facts
+      ansible.builtin.setup:
+      tags: [always]
   roles:
     - role: general
       tags: [ge]
     - role: lvm
       tags: [lvm]
+    - role: backup
+      tags: [backup]
 
 - hosts: workstation
   environment: "{{ ansible_environment | default({}) }}"

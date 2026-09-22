@@ -1,0 +1,6 @@
+[Unit]
+Description=Power off when idle (no SSH connections)
+
+[Service]
+Type=oneshot
+ExecStart=/opt/backup/idle-poweroff

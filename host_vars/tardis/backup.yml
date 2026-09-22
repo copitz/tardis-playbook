@@ -1,0 +1,5 @@
+# tardis's ZFS-backed NAS share (see roles/ssd2, host_vars/tardis/iam.yml's
+# nas_home) - irreplaceable, so it's the asset tier.
+backup_assets:
+  nas:
+    path: /tank/assets
