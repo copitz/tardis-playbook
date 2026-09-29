@@ -15,6 +15,9 @@
 # of probing restic-rest-server - used by tasks/main.yml, which runs before
 # restic-rest-server is necessarily even installed and just needs to know
 # the host is up enough for Ansible to manage it over SSH.
+#
+# Not meant for regular clients, but for administrative tasks on the server
+# Needs SSH_USER to be set and key auth set up for the current $USER
 SYSTEMD_ONLY=false
 
 # When set (--broadcast-wol), the WoL packet goes to the local broadcast
@@ -60,7 +63,7 @@ SHUTDOWN_GRACE=90
 # back online. A packet sent while the host is still finishing a shutdown
 # can go out before its NIC has actually armed for Wake-on-LAN and be
 # ignored, so a single send isn't reliable.
-RESEND_INTERVAL=30
+RESEND_INTERVAL=45
 
 # Overall cap on how long to wait for the host to come online and its
 # service to become available, enforced with bash's own $SECONDS rather
