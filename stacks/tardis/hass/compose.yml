@@ -15,7 +15,7 @@ services:
       - ${STACKS_DATA_DIR:?}/hass/config:/config
       - /etc/localtime:/etc/localtime:ro
       - /run/dbus:/run/dbus:ro
-      - ${STACKS_DATA_DIR:?}/hass/custom_components/ha-solarman/custom_components/solarman:/config/custom_components/solarman
+      - ${STACKS_DATA_DIR:?}/hass/custom_components:/config/custom_components
     restart: unless-stopped
 
 networks:
