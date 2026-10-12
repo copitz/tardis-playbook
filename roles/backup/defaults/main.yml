@@ -23,9 +23,11 @@
 # Default excludes for the system tier below. A plain "/" backup needs to
 # skip the usual non-config noise: virtual/pseudo filesystems (also pruned
 # by oneFileSystem below, but some of these - e.g. /tmp - are often just
-# plain directories on the root fs, not their own mount), caches, Docker's
-# own storage, and stacks_data_dir itself (both already covered separately
-# by the configs tier, so excluded here to avoid double-backing them up).
+# plain directories on the root fs, not their own mount), caches and
+# Docker's own storage. Every backup_assets/backup_configs entry's path is
+# excluded on top of these automatically (see backup.sh.j2), so data those
+# tiers already cover never also lands in the shared system repository -
+# no need to list them here.
 backup_system_excludes:
   - /dev
   - /proc
@@ -38,7 +40,6 @@ backup_system_excludes:
   - /var/lib/docker
   - /swapfile
   - /home/*/.cache
-  - "{{ stacks_data_dir }}"
 
 backup_system:
   path: /

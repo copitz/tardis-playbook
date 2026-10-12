@@ -50,7 +50,13 @@ backup_entry() {
 }
 
 {% if 'system' in backup_client_tiers %}
-backup_entry system system {{ backup_system.path | quote }} {{ restic_args(backup_system) }}
+{# Everything the assets/configs tiers already back up is excluded from the
+   system tier, whether or not it sits on the root filesystem (on a host
+   where it does, --one-file-system alone wouldn't keep it out). #}
+{% set tier_paths = (backup_assets.values() | list + backup_configs.values() | list)
+     | map(attribute='path') | map('regex_replace', '(.)/+$', '\\1') | list %}
+{% set system_entry = backup_system | combine({'exclude': backup_system.exclude | default([]) + tier_paths}) %}
+backup_entry system system {{ backup_system.path | quote }} {{ restic_args(system_entry) }}
 {% endif %}
 {% for key, entry in backup_assets.items() -%}
 backup_entry assets/{{ key | quote }} assets {{ entry.path | quote }} --tag {{ key | quote }} {{ restic_args(entry) }}
