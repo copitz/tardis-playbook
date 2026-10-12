@@ -1,21 +1,24 @@
 # Backup source tiers for a backup client (see tasks/client.yml), matching
-# the three restic repos/LVs on the backup server (see host_vars/ark/lvm.yml).
+# the three LVs on the backup server (see host_vars/ark/lvm.yml).
 # Each entry is {path: <required>, exclude: [<restic --exclude patterns>],
 # oneFileSystem: <bool, default false>} - see restic_args() in backup.sh.j2
 # for how these render into restic's own flags. An exclude pattern without a
 # leading / is resolved against the entry's own path (e.g. "incoming" on an
 # entry with path /tank/assets excludes /tank/assets/incoming); give a
-# leading / for a pattern anchored elsewhere. Each entry also gets its own
-# restic repository (see backup.sh.j2 / restore.sh.j2), so assets/configs
-# are maps keyed by that entry's own subfolder name under the tier's folder
-# on the backup server, e.g. backup_assets.nas -> .../assets/<host>/nas:
+# leading / for a pattern anchored elsewhere.
 #   system:  the whole root filesystem, minus backup_system_excludes below
 #            and anything on another mount (oneFileSystem: true below) - a
-#            single entry, not a map, since there's only ever one system
-#            path per host and it needs no subfolder/key.
+#            single entry, not a map. Goes into ONE repository shared by
+#            every host (see backup_system_repo_dir below), so the large overlap
+#            between hosts' root filesystems (same distro, same packages)
+#            dedupes globally; snapshots are told apart by restic's --host.
 #   assets:  irreplaceable data (e.g. NAS media/documents) - no sane default,
 #            a host with any must set backup_assets itself.
 #   configs: docker stack volumes - defaults to the whole stacks data dir.
+# assets/configs are maps keyed by entry name, and each tier gets one
+# repository per host (.../assets/<host>, .../configs/<host> on the backup
+# server) - entries within it dedupe against each other and are told apart
+# by snapshot tag (--tag <key>), while staying unreadable to other hosts.
 
 # Default excludes for the system tier below. A plain "/" backup needs to
 # skip the usual non-config noise: virtual/pseudo filesystems (also pruned
@@ -59,7 +62,7 @@ backup_server_password: "{{ backup_password }}"
 backup_restic_password: "{{ backup_server_password }}"
 
 # restic-rest-server (tasks/server.yml) serves a private per-user root
-# (--private-repos): each client only ever sees
+# (--private-repos) under backup_server_dir: each client only ever sees
 # {{ backup_server_dir }}/<hostname>/<tier>, symlinked (see tasks/client.yml)
 # into the real tier volume under backup_tiers_dir (host_vars/ark/lvm.yml).
 backup_server_port: 8000
@@ -73,6 +76,15 @@ backup_tier_dirs:
   system: systems
   assets: assets
   configs: configs
+
+# The one system repository every host's <hostname>/system symlink points
+# at, so they all back up into the same repository while still each
+# authenticating to restic-rest-server as themselves. Each host's own
+# backup_restic_password is added to it as a separate restic key (see
+# tasks/client.yml) - so no extra shared secret, but note what
+# sharing implies: any host can read (and forget/prune) every other host's
+# system snapshots.
+backup_system_repo_dir: "{{ backup_tiers_dir }}/{{ backup_tier_dirs.system }}/shared"
 
 # This host's tiers that actually have entries configured - drives which
 # symlinks get created for it on the backup server.

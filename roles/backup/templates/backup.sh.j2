@@ -23,37 +23,38 @@ export RESTIC_PASSWORD  # restic reads this from its process environment, not pa
 {%- endmacro -%}
 /opt/backup/ensure-server-on
 
-# One restic repository (and so one independent history of snapshots) per
-# entry rather than lumping a tier's entries into a single repository -
-# keeps each repository's contents obvious, and keeps excludes scoped to
-# the entry they were actually configured for. key is that entry's own
-# subfolder under the tier's folder on the backup server (see
-# defaults/main.yml) - empty for the system tier, which has no key. The
-# hostname segment matches the private-repos username restic-rest-server
-# authenticates this host as (see tasks/client.yml). Repo path uses
-# "$tier-$key", not "$tier/$key" - restic-rest-server's --private-repos
-# routing only matches one path segment below the username (see
-# tasks/client.yml's symlink tasks), so the symlink tree it's served from
-# has to stay flat even though the on-disk layout nests.
+# One restic repository per tier: system is shared by every host (see
+# defaults/main.yml), assets/configs are this host's own, with each entry
+# told apart by a --tag of its key. The hostname segment matches the
+# private-repos username restic-rest-server authenticates this host as (see
+# tasks/client.yml). Snapshots are explicitly tagged with this host's
+# inventory name via --host rather than whatever the OS hostname happens to
+# be - in the shared system repository that's the only thing telling hosts'
+# snapshots apart (and restic picks each backup's parent snapshot by host +
+# path). Remaining args go to restic backup as-is.
 backup_entry() {
-    local tier="$1" key="$2" path="$3"
+    local label="$1" tier="$2" path="$3"
     shift 3
-    local repo="$RESTIC_REPOSITORY_BASE/{{ inventory_hostname }}/$tier${key:+-$key}"
-    # First run against this entry: restic-rest-server only creates the
+    local repo="$RESTIC_REPOSITORY_BASE/{{ inventory_hostname }}/$tier"
+    # First run against this repository: restic-rest-server only creates the
     # directory (tasks/client.yml), not the repository itself, so init it
-    # here - the one place RESTIC_PASSWORD is actually available.
+    # here. The shared system repository is normally already initialized
+    # (with this host's key added) by tasks/client.yml - this only kicks in
+    # for it when this host is the very first one to use it.
     if ! restic -r "$repo" cat config >/dev/null 2>&1; then
-        echo "==> $tier${key:+/$key}: initializing repository"
+        echo "==> $label: initializing repository"
         restic -r "$repo" init
     fi
-    echo "==> $tier${key:+/$key}: $path ($*)"
-    restic -r "$repo" backup "$@" "$path"
+    echo "==> $label: $path ($*)"
+    restic -r "$repo" backup --host {{ inventory_hostname | quote }} "$@" "$path"
 }
 
-backup_entry system "" {{ backup_system.path | quote }} {{ restic_args(backup_system) }}
+{% if 'system' in backup_client_tiers %}
+backup_entry system system {{ backup_system.path | quote }} {{ restic_args(backup_system) }}
+{% endif %}
 {% for key, entry in backup_assets.items() -%}
-backup_entry assets {{ key | quote }} {{ entry.path | quote }} {{ restic_args(entry) }}
+backup_entry assets/{{ key | quote }} assets {{ entry.path | quote }} --tag {{ key | quote }} {{ restic_args(entry) }}
 {% endfor -%}
 {% for key, entry in backup_configs.items() -%}
-backup_entry configs {{ key | quote }} {{ entry.path | quote }} {{ restic_args(entry) }}
+backup_entry configs/{{ key | quote }} configs {{ entry.path | quote }} --tag {{ key | quote }} {{ restic_args(entry) }}
 {% endfor -%}

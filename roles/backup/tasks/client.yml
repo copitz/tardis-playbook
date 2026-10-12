@@ -31,12 +31,11 @@
     state: present
 
 # One backup/restore script pair per host, covering three source tiers -
-# system (same everywhere, backup_system), assets (per-host, explicit,
-# backup_assets), configs (this host's stacks data dir, backup_configs).
-# See defaults/main.yml for where those come from. Repository location and
-# HTTP-auth credentials come from /opt/backup/server.conf above; restic's
-# own repository encryption password is deliberately left to be supplied
-# via environment at invocation time instead - see backup.sh.j2.
+# system (same everywhere, backup_system, into the repository shared by all
+# hosts), assets (per-host, explicit, backup_assets), configs (this host's
+# stacks data dir, backup_configs). See defaults/main.yml for where those
+# come from. Repository locations, HTTP-auth credentials and restic
+# encryption passwords all come from /opt/backup/server.conf above.
 - name: Generate backup/restore scripts
   ansible.builtin.template:
     src: "{{ item }}.sh.j2"
@@ -53,8 +52,17 @@
 # doesn't depend on the server's own tasks having run first in the same
 # invocation (see backup_client_tiers / backup_tier_dirs in defaults/main.yml
 # for the tier-name mapping). Delegated to backup_server_host throughout.
+#
+# Each repository is served as <backup_server_dir>/<host>/<tier>, symlinked
+# into <tier volume>/<host> - except system, whose symlink points every host
+# at the one shared backup_system_repo_dir instead.
 - name: Provision this host on the restic REST server
   when: backup_client_tiers | length > 0
+  vars:
+    backup_repo_dirs: >-
+      {{ dict(backup_client_tiers | zip(backup_client_tiers | map('extract', backup_tier_dirs)
+           | map('regex_replace', '^(.*)$', backup_tiers_dir ~ '/\1/' ~ inventory_hostname)))
+         | combine({'system': backup_system_repo_dir} if 'system' in backup_client_tiers else {}) }}
   block:
     - name: Ensure python3-passlib is present on the backup server
       ansible.builtin.apt:
@@ -73,41 +81,16 @@
       register: backup_restic_rest_server_unit_stat
       delegate_to: "{{ backup_server_host }}"
 
-    - name: "Ensure {{ inventory_hostname }}'s tier directories exist on the backup server"
+    # restic-rest-server 404s on init rather than creating a repository's
+    # directory itself, so each one needs provisioning here.
+    - name: "Ensure {{ inventory_hostname }}'s repository directories exist on the backup server"
       ansible.builtin.file:
-        path: "{{ backup_tiers_dir }}/{{ backup_tier_dirs[item] }}/{{ inventory_hostname }}"
+        path: "{{ item }}"
         state: directory
         owner: restic-rest-server
         group: restic-rest-server
         mode: "0750"
-      loop: "{{ backup_client_tiers }}"
-      delegate_to: "{{ backup_server_host }}"
-      when: backup_restic_rest_server_unit_stat.stat.exists or not ansible_check_mode
-
-    # backup_assets/backup_configs entries each get their own repository
-    # under a subfolder keyed by their map key (see defaults/main.yml) -
-    # unlike backup_system, which has no key and so is fully covered by the
-    # tier directory itself above. restic-rest-server 404s on init rather
-    # than creating this subfolder itself, so it needs provisioning here too.
-    - name: "Ensure {{ inventory_hostname }}'s assets entry directories exist on the backup server"
-      ansible.builtin.file:
-        path: "{{ backup_tiers_dir }}/{{ backup_tier_dirs.assets }}/{{ inventory_hostname }}/{{ item }}"
-        state: directory
-        owner: restic-rest-server
-        group: restic-rest-server
-        mode: "0750"
-      loop: "{{ backup_assets.keys() | list }}"
-      delegate_to: "{{ backup_server_host }}"
-      when: backup_restic_rest_server_unit_stat.stat.exists or not ansible_check_mode
-
-    - name: "Ensure {{ inventory_hostname }}'s configs entry directories exist on the backup server"
-      ansible.builtin.file:
-        path: "{{ backup_tiers_dir }}/{{ backup_tier_dirs.configs }}/{{ inventory_hostname }}/{{ item }}"
-        state: directory
-        owner: restic-rest-server
-        group: restic-rest-server
-        mode: "0750"
-      loop: "{{ backup_configs.keys() | list }}"
+      loop: "{{ backup_repo_dirs.values() | list }}"
       delegate_to: "{{ backup_server_host }}"
       when: backup_restic_rest_server_unit_stat.stat.exists or not ansible_check_mode
 
@@ -124,35 +107,13 @@
     # restic-rest-server's --private-repos routing only matches requests one
     # path segment below the username (confirmed by it 404ing - with nothing
     # even reaching its own request logging - on a second nested segment) -
-    # so unlike the on-disk layout (tier dir, then a subfolder per key), the
-    # symlink tree exposed to the client has to stay flat: one top-level
-    # symlink per entry, named "<tier>-<key>" for keyed tiers (see below) or
-    # just "<tier>" for backup_system, which has no key.
-    - name: "Ensure {{ inventory_hostname }}'s system tier symlink exists on the backup server"
+    # hence <host>/<tier> and nothing deeper.
+    - name: "Ensure {{ inventory_hostname }}'s repository symlinks exist on the backup server"
       ansible.builtin.file:
-        path: "{{ backup_server_dir }}/{{ inventory_hostname }}/system"
-        src: "{{ backup_tiers_dir }}/{{ backup_tier_dirs.system }}/{{ inventory_hostname }}"
+        path: "{{ backup_server_dir }}/{{ inventory_hostname }}/{{ item.key }}"
+        src: "{{ item.value }}"
         state: link
-      delegate_to: "{{ backup_server_host }}"
-      when: >-
-        'system' in backup_client_tiers
-        and (backup_restic_rest_server_unit_stat.stat.exists or not ansible_check_mode)
-
-    - name: "Ensure {{ inventory_hostname }}'s assets entry symlinks exist on the backup server"
-      ansible.builtin.file:
-        path: "{{ backup_server_dir }}/{{ inventory_hostname }}/assets-{{ item }}"
-        src: "{{ backup_tiers_dir }}/{{ backup_tier_dirs.assets }}/{{ inventory_hostname }}/{{ item }}"
-        state: link
-      loop: "{{ backup_assets.keys() | list }}"
-      delegate_to: "{{ backup_server_host }}"
-      when: backup_restic_rest_server_unit_stat.stat.exists or not ansible_check_mode
-
-    - name: "Ensure {{ inventory_hostname }}'s configs entry symlinks exist on the backup server"
-      ansible.builtin.file:
-        path: "{{ backup_server_dir }}/{{ inventory_hostname }}/configs-{{ item }}"
-        src: "{{ backup_tiers_dir }}/{{ backup_tier_dirs.configs }}/{{ inventory_hostname }}/{{ item }}"
-        state: link
-      loop: "{{ backup_configs.keys() | list }}"
+      loop: "{{ backup_repo_dirs | dict2items }}"
       delegate_to: "{{ backup_server_host }}"
       when: backup_restic_rest_server_unit_stat.stat.exists or not ansible_check_mode
 
@@ -170,3 +131,70 @@
         backup_server_password is defined
         and (backup_restic_rest_server_unit_stat.stat.exists or not ansible_check_mode)
       notify: restart restic-rest-server
+
+# The key task below talks to restic-rest-server as this host, so a
+# just-added/changed htpasswd user needs to be live first.
+- name: Apply pending restic-rest-server restart
+  ansible.builtin.meta: flush_handlers
+
+# The shared system repository has one master key, but restic lets any
+# number of passwords ("keys") unlock it - so rather than a separate shared
+# secret, each host's own backup_restic_password is added as a key of its
+# own. Run from this host (as itself, against restic-rest-server) rather
+# than on the backup server, so restic-rest-server keeps owning everything
+# on disk. Adding a key needs an already-working password, so this tries
+# every other host's (from their own vars - which is why it lives here
+# rather than in backup.sh, where only this host's is available). Whichever
+# host gets here first just initializes the repository with its own; two
+# racing on that is fine, the loser falls through to adding its key with
+# the winner's password. Exit codes 10/12 are restic's own "repository does
+# not exist"/"wrong password".
+- name: Ensure {{ inventory_hostname }}'s password unlocks the shared system repository
+  ansible.builtin.shell:
+    executable: /bin/bash
+    cmd: |
+      set -uo pipefail
+      source /opt/backup/server.conf
+      /opt/backup/ensure-server-on >/dev/null || exit 1
+      repo="$RESTIC_REPOSITORY_BASE/{{ inventory_hostname }}/system"
+      own="$RESTIC_PASSWORD"
+      export RESTIC_PASSWORD
+
+      restic -r "$repo" cat config >/dev/null 2>&1 </dev/null; rc=$?
+      if ((rc == 10)); then
+          if restic -r "$repo" init </dev/null; then echo "initialized"; exit 0; fi
+          restic -r "$repo" cat config >/dev/null 2>&1 </dev/null; rc=$?
+      fi
+      ((rc == 0)) && exit 0
+      if ((rc != 12)); then
+          echo "restic cat config on the shared system repository failed with exit code $rc" >&2
+          exit 1
+      fi
+
+      # Other hosts' passwords, one per line on stdin
+      while IFS= read -r other; do
+          [[ -n "$other" ]] || continue
+          if RESTIC_PASSWORD="$other" restic -r "$repo" key add --host {{ inventory_hostname | quote }} \
+              --new-password-file <(printf '%s' "$own") </dev/null; then
+              echo "added"
+              exit 0
+          fi
+      done
+      # Not $repo - it embeds this host's restic-rest-server password
+      echo "None of the other hosts' passwords unlock the shared system repository - can't add a key for {{ inventory_hostname }}" >&2
+      exit 1
+    # A literal block with real line breaks rather than a {{ '\n' }} escape -
+    # in task args, Ansible renders that as a literal backslash-n, gluing all
+    # passwords into one line.
+    stdin: |
+      {% for h in groups['all'] if h != inventory_hostname %}
+      {% set hv = hostvars[h] %}
+      {{ hv.backup_restic_password | default(hv.backup_server_password) | default(hv.backup_password) | default('') }}
+      {% endfor %}
+  register: backup_system_repo_key
+  changed_when: backup_system_repo_key.stdout_lines | intersect(['initialized', 'added']) | length > 0
+  no_log: true
+  when: >-
+    'system' in backup_client_tiers
+    and backup_server_password is defined
+    and backup_restic_password is defined

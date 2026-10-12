@@ -62,8 +62,8 @@ lvm_lvs:
     opts: errors=remount-ro
     fsck_pass: 2
 
-  # systems: repo for anything Ansible can rebuild from scratch, so raw
-  # redundancy isn't the point here. It's deliberately pinned to /dev/sda
+  # systems: the one repo shared by all hosts (see roles/backup) for anything
+  # Ansible can rebuild from scratch, so raw redundancy isn't the point here. It's deliberately pinned to /dev/sda
   # only (linear, no striping/spanning) so a failure of the disk backing this
   # tier is isolated from assets/configs, and vice versa - the goal is disk
   # failure isolation between tiers, not mirroring within this one.

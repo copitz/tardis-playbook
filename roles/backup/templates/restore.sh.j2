@@ -9,10 +9,16 @@ set -euo pipefail
 #
 # Usage: restore <system|assets|configs> <key> [snapshot] [target-dir]
 #
-# <key> is the entry's own subfolder under the tier's folder on the backup
-# server (see backup_assets/backup_configs in defaults/main.yml) - each
-# entry has its own repository, so this is how a specific one is picked
-# out. Pass "" for the system tier, which has no key.
+# <key> is the entry's name in backup_assets/backup_configs (see
+# defaults/main.yml) - each tier's entries share one repository per host
+# and are told apart by snapshot tag, so this is how a specific one is
+# picked out. Pass "" for the system tier, which has no key.
+#
+# "latest" (the default) only ever considers {{ inventory_hostname }}'s own
+# snapshots - the system repository is shared by every host. An explicit
+# snapshot ID isn't filtered, so another host's system snapshot (e.g. when
+# rebuilding a dead host under a new name) can still be restored by its ID,
+# found via: restic -r "$RESTIC_REPOSITORY_BASE/{{ inventory_hostname }}/system" snapshots
 
 source /opt/backup/server.conf
 : "${RESTIC_REPOSITORY_BASE:?RESTIC_REPOSITORY_BASE not set in /opt/backup/server.conf - is backup_server_password defined for this host?}"
@@ -24,10 +30,16 @@ key="${2?key required (empty string for system)}"
 snapshot="${3:-latest}"
 target="${4:-/}"
 
-# hostname segment matches the private-repos username restic-rest-server
-# authenticates this host as - see backup.sh.j2's backup_entry(), including
-# why this is "$tier-$key" rather than "$tier/$key".
-repo="$RESTIC_REPOSITORY_BASE/{{ inventory_hostname }}/$tier${key:+-$key}"
+filter=(--host {{ inventory_hostname | quote }})
+case "$tier" in
+    system) ;;
+    assets|configs) filter+=(--tag "${key:?key required for $tier}") ;;
+    *) echo "Unknown tier: $tier (system|assets|configs)" >&2; exit 1 ;;
+esac
 
-echo "==> Restoring $repo@$snapshot into $target"
-restic -r "$repo" restore "$snapshot" --target "$target"
+# hostname segment matches the private-repos username restic-rest-server
+# authenticates this host as - see backup.sh.j2's backup_entry().
+repo="$RESTIC_REPOSITORY_BASE/{{ inventory_hostname }}/$tier"
+
+echo "==> Restoring $tier${key:+/$key}@$snapshot into $target"
+restic -r "$repo" restore "$snapshot" "${filter[@]}" --target "$target"
