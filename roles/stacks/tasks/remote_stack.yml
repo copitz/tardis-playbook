@@ -6,10 +6,14 @@
     archive: yes
     recursive: yes
     checksum: yes
+    delete: yes
     rsync_opts:
       - "--exclude=ansible.yml"
+  loop: ["{{ stack }}"]
+  loop_control:
+    label: "{{ stack }}"
 
-- name: Run stack's optional ansible.yml
+- name: "Run stack's optional ansible.yml ({{ stack }})"
   include_tasks: run_stack_ansible.yml
   vars:
     stack_ansible_src: "{{ stacks_src_dir }}/{{ stack }}"
@@ -19,12 +23,18 @@
   register: stack_ps
   failed_when: false
   changed_when: false
+  loop: ["{{ stack }}"]
+  loop_control:
+    label: "{{ stack }}"
 
 - name: Bring up changed stack if it was running
   command: /usr/local/bin/stacks "{{ stack }}" up -d
   register: compose_up
   failed_when: compose_up.rc != 0
-  when: stack_ps.stdout | trim != ''
+  when: stack_ps.results[0].stdout | trim != ''
+  loop: ["{{ stack }}"]
+  loop_control:
+    label: "{{ stack }}"
 
 - name: Wait for stack containers to reach running state
   shell: |
@@ -49,4 +59,7 @@
   until: wait_result.rc == 0
   retries: 10
   delay: 6
-  when: stack_ps.stdout | trim != ''
+  when: stack_ps.results[0].stdout | trim != ''
+  loop: ["{{ stack }}"]
+  loop_control:
+    label: "{{ stack }}"

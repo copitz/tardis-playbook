@@ -6,6 +6,7 @@ services:
       - ${STACKS_DATA_DIR:?}/z2m/data:/app/data
       - /run/udev:/run/udev:ro
       - /dev/serial:/dev/serial
+      - ./extensions:/app/data/external_extensions
     devices:
       - /dev/ttyUSB0
     environment:

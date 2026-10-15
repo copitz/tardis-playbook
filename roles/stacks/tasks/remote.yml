@@ -94,6 +94,7 @@
         archive: yes
         recursive: yes
         checksum: yes
+        delete: yes
         rsync_opts:
           - --dry-run
           - --itemize-changes
