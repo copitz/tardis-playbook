@@ -13,7 +13,7 @@
 
 // Global defaults, used by every room unless overridden.
 const DEFAULTS = {
-  threshold: 0.2,      // °C change vs. last value SENT before forwarding
+  threshold: 0.1,      // °C change vs. last value SENT before forwarding
   heartbeatMin: 30,    // re-send last value every N minutes (0 = off)
   trv: {               // sent to every TRV on z2m start (one /set payload)
     temperature_sensor_select: 'remote_temperature',
