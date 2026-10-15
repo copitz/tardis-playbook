@@ -5,12 +5,12 @@
 # Expects: stack (stack name), stack_ansible_src (dir containing the stack's
 # source files, on the controller, e.g. the temp copy used for remote pushes).
 
-- name: "Check for {{ stack }}/ansible.yml"
+- name: "[{{ stack }} : Check for ansible.yml]"
   stat:
     path: "{{ stack_ansible_src }}/ansible.yml"
   register: stack_ansible_file
   delegate_to: localhost
 
-- name: "Run {{ stack }}/ansible.yml"
+- name: "[{{ stack }} : Run ansible.yml]"
   include_tasks: "{{ stack_ansible_src }}/ansible.yml"
   when: stack_ansible_file.stat.exists

@@ -7,11 +7,11 @@
 # reuses its own broker credentials here (stacks.z2m.config.secrets), so
 # both stacks stay in sync on a single source of truth.
 
-- name: Seed mosquitto config as root
+- name: "[{{ stack }} : Seed mosquitto config as root]"
   vars:
     ansible_become: true
   block:
-    - name: Ensure mosquitto config directory exists
+    - name: "[{{ stack }} : Ensure mosquitto config directory exists]"
       file:
         path: "{{ stacks_data_dir }}/{{ stack }}/config"
         state: directory
@@ -19,7 +19,7 @@
         group: mosquitto
         mode: "0755"
 
-    - name: Ensure mosquitto password file exists
+    - name: "[{{ stack }} : Ensure mosquitto password file exists]"
       ansible.builtin.file:
         path: "{{ stacks_data_dir }}/{{ stack }}/config/passwords"
         state: touch
@@ -27,7 +27,7 @@
         owner: mosquitto
         group: mosquitto
 
-    - name: Write mosquitto passwords checksum
+    - name: "[{{ stack }} : Write mosquitto passwords checksum]"
       copy:
         dest: "{{ stacks_data_dir }}/{{ stack }}/config/passwords.checksum"
         content: "{{ stacks.mqtt.users | sort(attribute='user') | to_json | hash('sha256') }}"
@@ -37,7 +37,7 @@
       register: mosquitto_passwords_checksum
       no_log: true
 
-    - name: Set mosquitto user passwords
+    - name: "[{{ stack }} : Set mosquitto user passwords]"
       command: >
         docker run --rm
         -u mosquitto:mosquitto
@@ -52,7 +52,7 @@
       no_log: true
       when: mosquitto_passwords_checksum.changed
 
-    - name: Deploy mosquitto.conf (once, not overwritten on subsequent runs)
+    - name: "[{{ stack }} : Deploy mosquitto.conf (once, not overwritten on subsequent runs)]"
       copy:
         dest: "{{ stacks_data_dir }}/{{ stack }}/config/mosquitto.conf"
         mode: "0644"
@@ -94,11 +94,11 @@
           log_type information
 
   rescue:
-    - name: Remove mosquitto passwords checksum after failure
+    - name: "[{{ stack }} : Remove mosquitto passwords checksum after failure]"
       file:
         path: "{{ stacks_data_dir }}/{{ stack }}/config/passwords.checksum"
         state: absent
 
-    - name: Re-raise error
+    - name: "[{{ stack }} : Re-raise error]"
       fail:
         msg: "{{ ansible_failed_result.msg | default('Seeding mosquitto config failed') }}"
