@@ -98,6 +98,7 @@
         rsync_opts:
           - --dry-run
           - --itemize-changes
+          - --exclude=ansible.yml
       register: stacks_push_dry
       changed_when: false
 
