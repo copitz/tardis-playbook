@@ -4,6 +4,11 @@
 #
 # Expects: stack (stack name), stack_ansible_src (dir containing the stack's
 # source files, on the controller, e.g. the temp copy used for remote pushes).
+#
+# On remote hosts ansible.yml only runs when the stack's synced files changed,
+# and ansible.yml itself is not synced. To re-run it when it or the vars it
+# uses change, list them as restart triggers in the stack's .stack.yml
+# (see files/stack.schema.json).
 
 - name: "[{{ stack }} : Check for ansible.yml]"
   stat:

@@ -1,3 +1,19 @@
+# Restart rules (see files/stack.schema.json): the resolved .stack.yml (see
+# remote.yml) of the last deploy is still on the host, so rules not found in it
+# had their triggers changed. Their services get restarted, except those that
+# `compose up` recreated or started anyway.
+
+- name: "[{{ stack }} : Read restart rules]"
+  set_fact:
+    stack_restart_rules: "{{ (stack_configs[stack] | default({})).restart | default([]) }}"
+
+- name: "[{{ stack }} : Read deployed .stack.yml (for restart trigger detection)]"
+  slurp:
+    src: "/opt/stacks/{{ stack }}/.stack.yml"
+  register: stack_config_deployed
+  failed_when: false
+  when: stack_restart_rules | length > 0
+
 - name: "[{{ stack }} : Push changed stack directory]"
   ansible.posix.synchronize:
     src: "{{ stacks_src_dir }}/{{ stack }}/"
@@ -21,33 +37,75 @@
   failed_when: false
   changed_when: false
 
-- name: "[{{ stack }} : Bring up changed stack if it was running]"
-  command: /usr/local/bin/stacks "{{ stack }}" up -d
-  register: compose_up
-  failed_when: compose_up.rc != 0
+# Stopped stacks stay stopped - only running ones get brought up and restarted
+- name: "[{{ stack }} : Update running stack]"
   when: stack_ps.stdout | trim != ''
+  block:
+    - name: "[{{ stack }} : Find restart rules with changed triggers]"
+      set_fact:
+        stack_restart_triggered: >-
+          {{ stack_restart_rules | reject('in', stack_restart_deployed) | list }}
+      vars:
+        stack_restart_deployed: >-
+          {{ ((stack_config_deployed.content | b64decode | from_yaml) or {}).restart | default([])
+             if stack_config_deployed.content is defined else [] }}
 
-- name: "[{{ stack }} : Wait for stack containers to reach running state]"
-  shell: |
-    ids=$(/usr/local/bin/stacks "{{ stack }}" ps -q)
-    if [ -z "$ids" ]; then
-      exit 0
-    fi
-    for id in $ids; do
-      status=$(docker inspect -f '{{"{{.State.Status}}"}}' $id)
-      exit_code=$(docker inspect -f '{{"{{.State.ExitCode}}"}}' $id 2>/dev/null || echo '')
-      # Consider service healthy if running, or exited successfully (exit code 0)
-      if [ "$status" = "running" ]; then
-        continue
-      fi
-      if [ "$status" = "exited" ] && [ "$exit_code" = "0" ]; then
-        continue
-      fi
-      exit 1
-    done
-    exit 0
-  register: wait_result
-  until: wait_result.rc == 0
-  retries: 10
-  delay: 6
-  when: stack_ps.stdout | trim != ''
+    - name: "[{{ stack }} : Snapshot containers before compose up]"
+      shell: &stack_snapshot |
+        ids=$(/usr/local/bin/stacks "{{ stack }}" ps -aq)
+        [ -z "$ids" ] || docker inspect -f '{% raw %}{{index .Config.Labels "com.docker.compose.service"}} {{.Id}} {{.State.StartedAt}}{% endraw %}' $ids | sort
+      register: stack_snapshot_before
+      changed_when: false
+      check_mode: false
+      when: stack_restart_triggered | length > 0
+
+    - name: "[{{ stack }} : Bring up changed stack]"
+      command: /usr/local/bin/stacks "{{ stack }}" up -d
+      register: compose_up
+      failed_when: compose_up.rc != 0
+
+    - name: "[{{ stack }} : Restart services of changed restart rules]"
+      when: stack_restart_triggered | length > 0
+      block:
+        - name: "[{{ stack }} : Snapshot containers after compose up]"
+          shell: *stack_snapshot
+          register: stack_snapshot_after
+          changed_when: false
+          check_mode: false
+
+        - name: "[{{ stack }} : Restart services compose up didn't recreate or start]"
+          command:
+            argv: "{{ ['/usr/local/bin/stacks', stack, 'restart'] + stack_restart_services }}"
+          vars:
+            stack_services: "{{ stack_snapshot_after.stdout_lines | map('split') | map('first') | unique | list }}"
+            stack_services_upped: >-
+              {{ stack_snapshot_after.stdout_lines | difference(stack_snapshot_before.stdout_lines)
+                 | map('split') | map('first') | unique | list }}
+            stack_restart_services: >-
+              {{ stack_restart_triggered | map(attribute='services') | map('default', stack_services, true)
+                 | flatten | unique | difference(stack_services_upped) }}
+          when: stack_restart_services | length > 0
+
+    - name: "[{{ stack }} : Wait for stack containers to reach running state]"
+      shell: |
+        ids=$(/usr/local/bin/stacks "{{ stack }}" ps -q)
+        if [ -z "$ids" ]; then
+          exit 0
+        fi
+        for id in $ids; do
+          status=$(docker inspect -f '{{"{{.State.Status}}"}}' $id)
+          exit_code=$(docker inspect -f '{{"{{.State.ExitCode}}"}}' $id 2>/dev/null || echo '')
+          # Consider service healthy if running, or exited successfully (exit code 0)
+          if [ "$status" = "running" ]; then
+            continue
+          fi
+          if [ "$status" = "exited" ] && [ "$exit_code" = "0" ]; then
+            continue
+          fi
+          exit 1
+        done
+        exit 0
+      register: wait_result
+      until: wait_result.rc == 0
+      retries: 10
+      delay: 6

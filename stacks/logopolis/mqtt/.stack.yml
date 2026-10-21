@@ -1,0 +1,9 @@
+# yaml-language-server: $schema=../../../roles/stacks/files/stack.schema.json
+restart:
+  # mosquitto only reads its password file on start, and ansible.yml (which
+  # sets the passwords) only runs when the stack is marked as changed
+  - services: [mosquitto]
+    trigger_variables:
+      - stacks.mqtt.users
+    trigger_files:
+      - ansible.yml

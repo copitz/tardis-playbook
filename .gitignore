@@ -2,3 +2,4 @@
 .vault_pass.txt
 /stacks/**/.env
 /stacks/**/.secrets.yaml
+__pycache__/

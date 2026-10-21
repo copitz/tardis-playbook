@@ -1,0 +1,7 @@
+# yaml-language-server: $schema=../../../roles/stacks/files/stack.schema.json
+restart:
+  # z2m only reads these on start
+  - services: [z2m]
+    trigger_files:
+      - extensions/**
+      - .secrets.yaml

@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Stack config (stacks/<host>/<stack>/.stack.yml)",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "restart": {
+      "description": "Rules restarting services after a deploy when their triggers changed. Services that `compose up` already recreated or started are not restarted again.",
+      "type": "array",
+      "default": [],
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "anyOf": [{ "required": ["trigger_variables"] }, { "required": ["trigger_files"] }],
+        "properties": {
+          "services": {
+            "description": "Services to restart - all of the stack's services when empty",
+            "type": "array",
+            "items": { "type": "string" },
+            "default": []
+          },
+          "trigger_variables": {
+            "description": "Dotted variable paths, each segment a glob (e.g. stacks.mqtt.users, stacks.z2m.*), each must match at least one variable",
+            "type": "array",
+            "items": { "type": "string" },
+            "default": []
+          },
+          "trigger_files": {
+            "description": "Globs relative to the stack dir (** recurses), each must match at least one file",
+            "type": "array",
+            "items": { "type": "string" },
+            "default": []
+          }
+        }
+      }
+    }
+  }
+}
