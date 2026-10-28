@@ -15,17 +15,22 @@ workstation:
       ansible_become_password: "{{ tardis_password }}"
 
 edge:
+  vars:
+    # Look up SSH host keys by domain instead of by the address connected to,
+    # so that reconnecting via a changed IP (see roles/network handlers) still
+    # passes host key checking
+    ansible_ssh_common_args: "-o HostKeyAlias={{ ipam_hosts[inventory_hostname].domain }}"
   hosts:
     logopolis:
       <<: *common_config
-      ansible_host: logopolis.c12z.de
+      ansible_host: "{{ ipam_hosts.logopolis.domain }}"
       ansible_user: "{{ logopolis_user }}"
       # Things like posix.synchronize need sshpass on the target, so we rather use ssh key auth
       #ansible_password: "{{ logopolis_password }}" 
       ansible_become_password: "{{ logopolis_password }}"
     ark:
       <<: *common_config
-      ansible_host: ark.c12z.de
+      ansible_host: "{{ ipam_hosts.ark.domain }}"
       ansible_user: "{{ ark_user }}"
       # Things like posix.synchronize need sshpass on the target, so we rather use ssh key auth
       #ansible_password: "{{ ark_password }}" 

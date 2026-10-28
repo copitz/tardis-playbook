@@ -1,6 +1,20 @@
-# Host-specific non-VLAN network settings
+# Network (see roles/network) - same static IP on both, wifi only while
+# ethernet is down
+network_ethernet_iface: enp2s0
+network_ethernet_address: "{{ ipam_hosts.logopolis.ip }}"
+network_ethernet_subnet: "{{ ipam_hosts.logopolis.subnet }}"
+network_ethernet_gateway: "{{ ipam_hosts.logopolis.gateway }}"
+network_ethernet_dns_nameservers: "{{ ipam_hosts.logopolis.nameservers }}"
+network_ethernet_dns_search: ["{{ domain }}"]
+network_wifi_iface: wlp1s0
 network_wifi_ssid: "{{ iot_wifi_ssid }}"
 network_wifi_psk: "{{ iot_wifi_password }}"
+network_wifi_address: "{{ network_ethernet_address }}"
+network_wifi_subnet: "{{ network_ethernet_subnet }}"
+network_wifi_gateway: "{{ network_ethernet_gateway }}"
+network_wifi_dns_nameservers: "{{ network_ethernet_dns_nameservers }}"
+network_wifi_dns_search: "{{ network_ethernet_dns_search }}"
+network_wifi_off_when_ethernet_up: true
 
 general_sudoers:
   - "{{ ansible_user }}"

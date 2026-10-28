@@ -1,8 +1,8 @@
-traefik_domain: "logopolis.{{ domain }}"
+traefik_domain: "{{ ipam_hosts.logopolis.domain }}"
 
 stacks:
   traefik:
-    ip: ~ # DHCP, DNS handled by mikrotik
+    ip: ~ # Unused - host ports on ipam_hosts.logopolis, DNS handled by mikrotik
     domain: "{{ traefik_domain }}"
     crt_domain_main: "*.{{ domain }}"
     crt_domain_sans: "*.{{ traefik_domain }}"

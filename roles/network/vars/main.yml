@@ -1,0 +1,11 @@
+# Which of ethernet/wifi are configured at all, and which of them statically
+network_configured_ifaces: "{{ (['ethernet'] if network_ethernet_iface else [])
+  + (['wifi'] if network_wifi_iface else []) }}"
+network_static_ifaces: "{{ (['ethernet'] if network_ethernet_iface and network_ethernet_address else [])
+  + (['wifi'] if network_wifi_iface and network_wifi_address else []) }}"
+# Static address the host is reachable at once the config is applied (ethernet
+# preferred) - ~ when DHCP only
+network_static_address: "{{
+  network_ethernet_address if 'ethernet' in network_static_ifaces
+  else network_wifi_address if 'wifi' in network_static_ifaces
+  else none }}"

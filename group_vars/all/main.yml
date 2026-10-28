@@ -10,5 +10,5 @@ backup_server_host: ark
 # How every client's ensure-server-on (roles/backup/files/ensure-server-on)
 # wakes ark up over WoL before backing up against it - one shared config
 # since it's the same physical NIC regardless of which client is waking it.
-backup_server_wol_host: ark.c12z.de
-backup_server_wol_mac: "24:5e:be:06:ae:ee"
+backup_server_wol_host: "{{ ipam_hosts.ark.domain }}"
+backup_server_wol_mac: "{{ ipam_hosts.ark.mac }}"

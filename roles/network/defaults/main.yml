@@ -1,0 +1,42 @@
+# Plain ifupdown setup (/etc/network/interfaces) for hosts not using the
+# networkd based roles/network-trunked. Each of ethernet and wifi is only
+# configured when its iface is set.
+#
+# address: ~ for DHCP, or a static IP (take it from group_vars/all/ipam.yml)
+# together with the subnet (CIDR) it lives in - gateway and dns_* are only
+# used with a static address. Static default routes get a distinct metric
+# per iface, so they don't clash (ifup fails on an existing default route)
+# while both are up, e.g. during the ethernet/wifi handover.
+#
+# When all configured ifaces are static, /etc/resolv.conf is written from
+# their dns_* (unless it's a symlink, i.e. managed by resolvconf or
+# systemd-resolved).
+
+# --- Ethernet ---
+network_ethernet_iface: ~
+network_ethernet_address: ~
+network_ethernet_subnet: ~
+network_ethernet_gateway: ~
+network_ethernet_metric: 100
+network_ethernet_dns_nameservers: []
+network_ethernet_dns_search: []
+# Wake-on-LAN mode(s) as understood by `ethtool -s <iface> wol` (e.g. "g" for
+# magic packet), applied by ethtool's ifupdown hook - ~ to leave untouched.
+network_ethernet_wol: ~
+
+# --- WiFi ---
+network_wifi_iface: ~
+network_wifi_ssid: ~
+network_wifi_psk: ~
+network_wifi_address: ~
+network_wifi_subnet: ~
+network_wifi_gateway: ~
+network_wifi_metric: 600
+network_wifi_dns_nameservers: []
+network_wifi_dns_search: []
+# Prefer ethernet: while network_ethernet_gateway answers ARP on the ethernet
+# iface (so a cable in a port of another VLAN doesn't count), ethernet is up
+# and wifi down with all WLAN radios switched off (rfkill) - otherwise the
+# other way round. Done by the network-prefer-ethernet service instead of
+# ifupdown, needs a static ethernet address and gateway.
+network_wifi_off_when_ethernet_up: false

@@ -1,11 +1,11 @@
-traefik_domain: "ia.{{ domain }}"
+traefik_domain: "{{ ipam_hosts.tardis_traefik.domain }}"
 
 stacks:
   samba:
-    ip: 10.0.0.3
-    domain: "nas.{{ domain }}"
+    ip: "{{ ipam_hosts.tardis_samba.ip }}"
+    domain: "{{ ipam_hosts.tardis_samba.domain }}"
   traefik:
-    ip: 10.0.0.4
+    ip: "{{ ipam_hosts.tardis_traefik.ip }}"
     domain: "{{ traefik_domain }}"
     crt_domain_main: "*.{{ domain }}"
     crt_domain_sans: "*.{{ traefik_domain }}"

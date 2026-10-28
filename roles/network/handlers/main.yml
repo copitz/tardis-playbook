@@ -1,0 +1,38 @@
+# Cycle all managed ifaces to pick up the new config. Runs detached (async,
+# poll 0) since it drops the very connection Ansible is using - then waits
+# for the host to come back. When ethernet is preferred, the restarted
+# network-prefer-ethernet.service brings up wifi and switches to ethernet
+# once the gateway answers on it.
+- name: apply network config
+  ansible.builtin.shell: |
+    {% if network_wifi_off_when_ethernet_up %}
+    systemctl stop network-prefer-ethernet || true
+    {% endif %}
+    {% for iface in [network_ethernet_iface, network_wifi_iface] | select %}
+    ifdown {{ iface }} || true
+    {% endfor %}
+    {% if network_wifi_off_when_ethernet_up %}
+    systemctl daemon-reload
+    systemctl restart network-prefer-ethernet
+    {% else %}
+    {% for iface in [network_wifi_iface, network_ethernet_iface] | select %}
+    ifup {{ iface }} || true
+    {% endfor %}
+    {% endif %}
+  async: 180
+  poll: 0
+
+# Connect via the configured static IP from now on - for the rest of this run
+# (facts outrank inventory vars), so it goes on when the IP changed while DNS
+# (ansible_host) still points to the old one.
+- name: reconnect via static address
+  ansible.builtin.set_fact:
+    ansible_host: "{{ network_static_address }}"
+  when: network_static_address is truthy and not ansible_check_mode
+  listen: apply network config
+
+- name: wait for network
+  listen: apply network config
+  ansible.builtin.wait_for_connection:
+    delay: 10
+    timeout: 300

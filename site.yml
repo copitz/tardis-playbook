@@ -59,6 +59,12 @@
     - role: network-trunked
       tags: [net]
 
+- hosts: all:!workstation
+  environment: "{{ ansible_environment | default({}) }}"
+  roles:
+    - role: network
+      tags: [net]
+
 - hosts: all
   environment: "{{ ansible_environment | default({}) }}"
   roles:

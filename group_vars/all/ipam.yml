@@ -1,0 +1,90 @@
+# Light IPAM - every subnet, range and static address in use, referenced by
+# inventory, roles, host_vars and stacks instead of literal addresses. Check
+# here for clashes before handing out anything new.
+#
+# Conventions: .1 is the (mikrotik) gateway and DNS server of each network,
+# hosts get .32 and up, .0/27 of LAN and IoT is reserved for tardis' docker
+# ipvlan containers (see docker_ranges below and roles/network-trunked).
+
+# Physical networks / VLANs, by identifier. Each entry repeats its own
+# identifier as `network`, so hosts merging it in (<<: *id) carry it as well.
+#   subnet        CIDR
+#   gateway       Default gateway
+#   nameservers   DNS servers handed to clients
+#   vlan_id       VLAN tag (~ for untagged)
+#   docker_ranges Docker ipvlan IPAM pools in this network, by docker host
+ipam_networks:
+  lan: &lan
+    network: lan
+    subnet: 192.168.11.0/24
+    gateway: 192.168.11.1
+    nameservers: ["192.168.11.1"]
+    vlan_id: ~
+    docker_ranges:
+      tardis: 192.168.11.0/27 # Range 0-31 reserved for containers on tardis (ipvlan)
+  srv: &srv
+    network: srv
+    subnet: 10.0.0.0/24
+    gateway: 10.0.0.1
+    nameservers: ["10.0.0.1"]
+    vlan_id: 10
+    docker_ranges: {}  # Containers only get static IPs (see ipam_hosts)
+  iot: &iot
+    network: iot
+    subnet: 10.0.1.0/24
+    gateway: 10.0.1.1
+    nameservers: ["10.0.1.1"]
+    vlan_id: 20
+    docker_ranges:
+      tardis: 10.0.1.0/27 # Range 0-31 reserved for containers on tardis (ipvlan)
+
+# Static addresses, by identifier - one DNS A record (domain -> ip) each.
+# Every entry merges in its network (<<: *id), so it holds network, subnet,
+# gateway, nameservers and vlan_id besides:
+#   ip       Address (without prefix)
+#   domain   FQDN resolving to ip
+#   comment  What it is
+#   mac      MAC address, where needed (e.g. Wake-on-LAN)
+#
+# e.g. for DNS entries:
+#   loop: "{{ ipam_hosts | dict2items }}"  ->  item.value.domain / item.value.ip
+ipam_hosts:
+  ark:
+    <<: *srv
+    ip: 10.0.0.10
+    domain: "ark.{{ domain }}"
+    comment: Backup server
+    mac: "24:5e:be:06:ae:ee"
+  logopolis:
+    <<: *iot
+    ip: 10.0.1.32  # Same address on ethernet and wifi
+    domain: "logopolis.{{ domain }}"
+    comment: Zigbee/MQTT edge host
+  tardis_samba:
+    <<: *srv
+    ip: 10.0.0.3
+    domain: "nas.{{ domain }}"
+    comment: Samba NAS container on tardis (ipvlan)
+  tardis_traefik:
+    <<: *srv
+    ip: 10.0.0.4
+    domain: "ia.{{ domain }}"
+    comment: Traefik container on tardis (ipvlan)
+
+# Docker-internal networks - not routed outside their docker host, so no DNS.
+# Pool docker carves its bridge networks from (roles/docker), on every host
+ipam_docker_pool: 172.20.0.0/16
+# Networks defined by stacks, by identifier
+#   subnet, gateway  as above
+#   range            IPAM pool for dynamically assigned containers
+#   ips              Static container addresses, by service
+ipam_docker_networks:
+  tardis_arr:
+    subnet: 10.0.3.0/24
+    gateway: 10.0.3.1
+    range: 10.0.3.100/30
+  tardis_arr_wg_wan:
+    subnet: 10.0.2.0/24
+    gateway: 10.0.2.1
+    ips:
+      wireguard: 10.0.2.10

@@ -19,7 +19,7 @@ services:
     restart: unless-stopped
     networks:
       wg_wan:
-        ipv4_address: 10.0.2.10
+        ipv4_address: ${WIREGUARD_IP:?}
         interface_name: wan0
       traefik:
       arr:
@@ -120,13 +120,13 @@ networks:
     ipam:
       driver: default
       config:
-        - subnet: 10.0.3.0/24
-          ip_range: 10.0.3.100/30
-          gateway: 10.0.3.1
+        - subnet: ${ARR_SUBNET:?}
+          ip_range: ${ARR_IP_RANGE:?}
+          gateway: ${ARR_GATEWAY:?}
   wg_wan:
     driver: bridge
     ipam:
       driver: default
       config:
-        - subnet: 10.0.2.0/24
-          gateway: 10.0.2.1
+        - subnet: ${WG_WAN_SUBNET:?}
+          gateway: ${WG_WAN_GATEWAY:?}

@@ -10,7 +10,7 @@ services:
       UID_lilla: 1001
       UID_copitz: 1000
 
-      GROUPS_family: 1002
+      GROUP_family: 1002
       GROUPS_copitz: family
       GROUPS_lilla: family
 

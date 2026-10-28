@@ -5,5 +5,11 @@ general_open_ports:
   - "22"
   - "{{ backup_server_port }}" # This is the backup server - see backup.yml
 
-general_packages:
-  - "ethtool"
+# Network (see roles/network)
+network_ethernet_iface: enp3s0
+network_ethernet_address: "{{ ipam_hosts.ark.ip }}"
+network_ethernet_subnet: "{{ ipam_hosts.ark.subnet }}"
+network_ethernet_gateway: "{{ ipam_hosts.ark.gateway }}"
+network_ethernet_dns_nameservers: "{{ ipam_hosts.ark.nameservers }}"
+network_ethernet_dns_search: ["{{ domain }}"]
+network_ethernet_wol: g  # backup clients wake ark up before backing up (see roles/backup)

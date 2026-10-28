@@ -1,6 +1,6 @@
-# Override IP range prefixes to avoid clashes across docker hosts
-network_lan_ip_range_prefix: 27    # 192.168.11.0/27 = 192.168.11.0 - 192.168.11.31
-network_iot_ip_range_prefix: 27    # 10.0.1.0/27 = 10.0.1.0 - 10.0.1.31
+# Docker IPAM pools - distinct per docker host to avoid clashes
+network_lan_ip_range: "{{ ipam_networks.lan.docker_ranges.tardis }}"
+network_iot_ip_range: "{{ ipam_networks.iot.docker_ranges.tardis }}"
 
 stacks_data_dir: /var/tardis/apps
 

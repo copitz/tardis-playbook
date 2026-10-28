@@ -4,29 +4,29 @@ network_lan_iface: enp16s0
 # LAN (host-bridged, no VLAN tag)
 network_lan_name: lan-net
 network_lan_parent: br-lan
-network_lan_vlan_id: ~
-network_lan_subnet: "{{ ansible_facts['default_ipv4'].network ~ '/' ~ ansible_facts['default_ipv4'].prefix }}"
-network_lan_gateway: "{{ ansible_facts['default_ipv4'].gateway }}"
+network_lan_vlan_id: "{{ ipam_networks.lan.vlan_id }}"
+network_lan_subnet: "{{ ipam_networks.lan.subnet }}"
+network_lan_gateway: "{{ ipam_networks.lan.gateway }}"
 network_lan_driver: ipvlan
-network_lan_ip_range_prefix: ~  # Must be set per host to avoid IP clashes across docker hosts
+network_lan_ip_range: ~  # Docker IPAM pool (CIDR) - must be set per host to avoid IP clashes across docker hosts
 
 # SRV VLAN
 network_srv_name: srv-net
 network_srv_parent: br-srv
-network_srv_vlan_id: 10
-network_srv_subnet: 10.0.0.0/24
-network_srv_gateway: 10.0.0.1
+network_srv_vlan_id: "{{ ipam_networks.srv.vlan_id }}"
+network_srv_subnet: "{{ ipam_networks.srv.subnet }}"
+network_srv_gateway: "{{ ipam_networks.srv.gateway }}"
 network_srv_driver: ipvlan
-network_srv_ip_range_prefix: 32  # Disable Docker IPAM assigning IPs from the pool
+network_srv_ip_range: "{{ network_srv_subnet | ansible.utils.ipaddr('network') }}/32"  # Disable Docker IPAM assigning IPs from the pool
 
 # IoT VLAN
 network_iot_name: iot-net
 network_iot_parent: br-iot
-network_iot_vlan_id: 20
-network_iot_subnet: 10.0.1.0/24
-network_iot_gateway: 10.0.1.1
+network_iot_vlan_id: "{{ ipam_networks.iot.vlan_id }}"
+network_iot_subnet: "{{ ipam_networks.iot.subnet }}"
+network_iot_gateway: "{{ ipam_networks.iot.gateway }}"
 network_iot_driver: ipvlan
-network_iot_ip_range_prefix: ~  # Must be set per host to avoid IP clashes across docker hosts
+network_iot_ip_range: ~  # Docker IPAM pool (CIDR) - must be set per host to avoid IP clashes across docker hosts
 
 # NetworkManager is having issues detecting connectivity on unmanaged interfaces (br-lan)
 # This leads to apps relying on NetworkManager thinking there is no network connection
