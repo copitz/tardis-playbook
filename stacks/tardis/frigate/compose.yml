@@ -1,7 +1,8 @@
 services:
   neolink:
-    image: "quantumentangledandy/neolink:v0.5.17"
-    build: https://github.com/QuantumEntangledAndy/neolink.git#v0.5.17:/
+    image: "quantumentangledandy/neolink"
+    #image: "quantumentangledandy/neolink:v0.5.17"
+    #build: https://github.com/QuantumEntangledAndy/neolink.git#v0.5.17:/
     restart: unless-stopped
     volumes:
       - ./neolink.toml:/etc/neolink.toml
@@ -9,15 +10,22 @@ services:
       resources:
         limits:
           memory: 768M
+    networks:
+      - default
+      - iot
 
   frigate:
     image: ghcr.io/blakeblackshear/frigate:stable-tensorrt
     restart: unless-stopped
-    shm_size: "124mb" # update for your cameras based on calculation above
+    shm_size: "146mb" # update for your cameras based on calculation in frigate docs
     volumes:
       - /etc/localtime:/etc/localtime:ro
       - ${STACKS_DATA_DIR:?}/frigate/config:/config
       - ${STACKS_DATA_DIR:?}/frigate/storage:/media/frigate
+      - type: tmpfs # 1GB in-memory filesystem for recording segment storage
+        target: /tmp/cache
+        tmpfs:
+          size: 1000000000
     networks:
       - default
       - traefik
@@ -27,14 +35,23 @@ services:
       - "traefik.http.routers.frigate.entrypoints=https"
       - "traefik.http.services.frigate.loadbalancer.server.port=8971"
     environment:
+      TZ: "Europe/Berlin"
       FRIGATE_RTSP_PASSWORD: "password"
-      YOLO_MODELS: yolov7-320
       NVIDIA_VISIBLE_DEVICES: all
       NVIDIA_DRIVER_CAPABILITIES: compute,utility,video
-    runtime: "nvidia"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all # Use all GPUs
+              capabilities: [gpu]
     depends_on:
       - neolink
 
 networks:
   traefik:
+    external: true
+  iot:
+    name: 'iot-net'
     external: true
