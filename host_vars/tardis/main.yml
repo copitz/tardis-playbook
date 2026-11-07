@@ -1,6 +1,7 @@
 # Docker IPAM pools - distinct per docker host to avoid clashes
 network_lan_ip_range: "{{ ipam_networks.lan.docker_ranges.tardis }}"
 network_iot_ip_range: "{{ ipam_networks.iot.docker_ranges.tardis }}"
+network_lan_ipv6: true
 
 stacks_data_dir: /var/tardis/apps
 

@@ -36,3 +36,8 @@
   ansible.builtin.wait_for_connection:
     delay: 10
     timeout: 300
+
+- name: apply sysctl
+  ansible.builtin.systemd:
+    name: systemd-sysctl
+    state: restarted

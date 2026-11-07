@@ -38,8 +38,10 @@
           Name=br-lan
 
           [Network]
-          DHCP=yes
-          IPv6AcceptRA=yes
+          # Without IPv6 also no link-local (networkd would re-enable IPv6 for it)
+          DHCP={{ network_lan_ipv6 | ternary('yes', 'ipv4') }}
+          LinkLocalAddressing={{ network_lan_ipv6 | ternary('ipv6', 'no') }}
+          IPv6AcceptRA={{ network_lan_ipv6 | ternary('yes', 'no') }}
 
           [Link]
           RequiredForOnline=routable
@@ -82,6 +84,9 @@
           # No IP for host on bridge, only for containers.
           # This forces host to route all traffic to containers via the LAN gateway,
           # which is what we want, so that host is just another client on the LAN
+          # Also no IPv6 link-local (networkd would re-enable IPv6 for it)
+          LinkLocalAddressing=no
+          IPv6AcceptRA=no
       {% endfor %}
   set_fact:
     networkd_files: "{{ (networkd_files | from_yaml) + (vlan_files | from_yaml) }}"

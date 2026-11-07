@@ -2,6 +2,7 @@
 - import_tasks: ifupdown.yml
 - import_tasks: networkd.yml
 - import_tasks: nm.yml
+- import_tasks: ipv6.yml
 - import_tasks: verify.yml
 
 # --- Docker networks ---

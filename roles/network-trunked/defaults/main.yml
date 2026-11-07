@@ -9,6 +9,9 @@ network_lan_subnet: "{{ ipam_networks.lan.subnet }}"
 network_lan_gateway: "{{ ipam_networks.lan.gateway }}"
 network_lan_driver: ipvlan
 network_lan_ip_range: ~  # Docker IPAM pool (CIDR) - must be set per host to avoid IP clashes across docker hosts
+# IPv6 (SLAAC) for the host on br-lan - otherwise it's disabled, as on all
+# other ifaces (the VLAN bridges never get one, also no link-local)
+network_lan_ipv6: false
 
 # SRV VLAN
 network_srv_name: srv-net

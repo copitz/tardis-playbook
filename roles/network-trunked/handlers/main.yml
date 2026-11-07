@@ -8,3 +8,8 @@
   systemd:
     name: docker
     state: restarted
+
+- name: apply sysctl
+  ansible.builtin.systemd:
+    name: systemd-sysctl
+    state: restarted

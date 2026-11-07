@@ -31,6 +31,7 @@ UP_CHECKS = 3  # Consecutive good checks before switching to ethernet
 DOWN_CHECKS = 3  # Consecutive failed probes (with link) before switching to wifi
 PROBE_TIMEOUT = 1
 ANNOUNCEMENTS = 3
+IFF_UP = 0x1
 
 
 def log(msg):
@@ -118,6 +119,10 @@ def use_wifi():
         run("ifup", WIFI)
     if is_up(ETHERNET):
         run("ifdown", ETHERNET)
+    # Without the link up (but unconfigured) the kernel doesn't detect carrier,
+    # so a cable plugged in later would go unnoticed - ifdown takes it down too
+    if not int(read_sys(ETHERNET, "flags") or "0", 16) & IFF_UP:
+        run("ip", "link", "set", "dev", ETHERNET, "up")
 
 
 def main():

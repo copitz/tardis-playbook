@@ -23,6 +23,8 @@ network_ethernet_dns_search: []
 # Wake-on-LAN mode(s) as understood by `ethtool -s <iface> wol` (e.g. "g" for
 # magic packet), applied by ethtool's ifupdown hook - ~ to leave untouched.
 network_ethernet_wol: ~
+# IPv6 (SLAAC) on this iface - otherwise it's disabled, as on all other ifaces
+network_ethernet_ipv6: false
 
 # --- WiFi ---
 network_wifi_iface: ~
@@ -34,6 +36,7 @@ network_wifi_gateway: ~
 network_wifi_metric: 600
 network_wifi_dns_nameservers: []
 network_wifi_dns_search: []
+network_wifi_ipv6: false
 # Prefer ethernet: while network_ethernet_gateway answers ARP on the ethernet
 # iface (so a cable in a port of another VLAN doesn't count), ethernet is up
 # and wifi down with all WLAN radios switched off (rfkill) - otherwise the
