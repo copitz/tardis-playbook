@@ -6,7 +6,7 @@ lvm_vgs:
 lvm_lvs:
   - name: lv_docker
     vg: vg_tardis
-    size: 30G
+    size: 50G
     mount: /var/lib/docker
     fs: ext4
     opts: defaults,noatime
