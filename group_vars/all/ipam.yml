@@ -83,6 +83,8 @@ ipam_docker_networks:
     subnet: 10.0.3.0/24
     gateway: 10.0.3.1
     range: 10.0.3.100/30
+    ips:
+      jellyfin: 10.0.3.10
   tardis_arr_wg_wan:
     subnet: 10.0.2.0/24
     gateway: 10.0.2.1

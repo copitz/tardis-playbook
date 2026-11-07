@@ -21,6 +21,7 @@ services:
       default:
       traefik:
       arr:
+        ipv4_address: ${ARR_IP:?}
 
   m3u-editor:
     image: sparkison/m3u-editor:latest
