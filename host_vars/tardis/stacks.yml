@@ -24,8 +24,13 @@ stacks:
         domain: "jellytv.{{ domain }}"
         cname: "{{ traefik_domain }}"
   frigate:
-    domain: "frigate.{{ domain }}"
-    cname: "{{ traefik_domain }}"
+    services:
+      frigate:
+        domain: "frigate.{{ domain }}"
+        cname: "{{ traefik_domain }}"
+      reostream:
+        domain: "reostream.{{ domain }}"
+        cname: "{{ traefik_domain }}"
   mqtt:
     domain: "mqtt.{{ domain }}"
     cname: "{{ traefik_domain }}"

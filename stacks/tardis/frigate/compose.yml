@@ -1,11 +1,11 @@
 services:
-  neolink:
-    image: "quantumentangledandy/neolink"
-    #image: "quantumentangledandy/neolink:v0.5.17"
-    #build: https://github.com/QuantumEntangledAndy/neolink.git#v0.5.17:/
+  reostream:
+    #image: "quantumentangledandy/neolink"
+    image: "ghcr.io/volttech21/reostream"
     restart: unless-stopped
     volumes:
-      - ./neolink.toml:/etc/neolink.toml
+      - /etc/localtime:/etc/localtime:ro
+      - ${STACKS_DATA_DIR:?}/frigate/reostream:/data
     deploy:
       resources:
         limits:
@@ -13,6 +13,12 @@ services:
     networks:
       - default
       - iot
+      - traefik
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.reostream.rule=Host(`${REOSTREAM_DOMAIN}`)"
+      - "traefik.http.routers.reostream.entrypoints=https"
+      - "traefik.http.services.reostream.loadbalancer.server.port=8562"
 
   frigate:
     image: ghcr.io/blakeblackshear/frigate:stable-tensorrt
@@ -31,7 +37,7 @@ services:
       - traefik
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.frigate.rule=Host(`${DOMAIN}`)"
+      - "traefik.http.routers.frigate.rule=Host(`${FRIGATE_DOMAIN}`)"
       - "traefik.http.routers.frigate.entrypoints=https"
       - "traefik.http.services.frigate.loadbalancer.server.port=8971"
     environment:
@@ -41,13 +47,15 @@ services:
       NVIDIA_DRIVER_CAPABILITIES: compute,utility,video
     deploy:
       resources:
+        limits:
+          memory: 1024M
         reservations:
           devices:
             - driver: nvidia
               count: all # Use all GPUs
               capabilities: [gpu]
     depends_on:
-      - neolink
+      - reostream
 
 networks:
   traefik:
