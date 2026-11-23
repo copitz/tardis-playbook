@@ -2,6 +2,8 @@
  * Zigbee2MQTT external extension for SONOFF TRVZB rooms:
  *  - forwards each room sensor's temperature to its TRV(s) via
  *    `external_temperature_input`, with a change threshold + heartbeat
+ *  - falls back to the TRVs' built-in sensor when the room sensor has not
+ *    been heard from for `staleMin` minutes, and switches back once it is
  *  - applies TRV settings on z2m start, layered: global -> room -> single TRV
  * No Home Assistant involved.
  *
@@ -15,6 +17,7 @@
 const DEFAULTS = {
   threshold: 0.1,      // °C change vs. last value SENT before forwarding
   heartbeatMin: 30,    // re-send last value every N minutes (0 = off)
+  staleMin: 90,        // sensor silent for N minutes -> TRVs use their own sensor (0 = off)
   trv: {               // sent to every TRV on z2m start (one /set payload)
     temperature_sensor_select: 'remote_temperature',
     smart_temperature_control: true,
@@ -25,7 +28,7 @@ const DEFAULTS = {
 };
 
 // Rooms. Optional per room:
-//   threshold, heartbeatMin  -> override the global values
+//   threshold, heartbeatMin, staleMin -> override the global values
 //   trv: { ... }             -> merged over DEFAULTS.trv for all TRVs of the room
 // A TRV entry is either 'friendly_name' or
 //   { name: 'friendly_name', trv: { ... } } -> merged over the room settings
@@ -88,6 +91,8 @@ class TrvSetup {
     this.rooms = {};      // roomName -> resolved room config
     this.bySensor = {};   // sensor friendly_name -> roomName
     this.lastSent = {};   // roomName -> last forwarded value
+    this.lastSeen = {};   // roomName -> ms timestamp of last message from the sensor
+    this.fallback = {};   // roomName -> true while TRVs run on their own sensor
     this.timers = [];
   }
 
@@ -122,6 +127,7 @@ class TrvSetup {
         sensor: room.sensor,
         threshold: room.threshold ?? DEFAULTS.threshold,
         heartbeatMin: room.heartbeatMin ?? DEFAULTS.heartbeatMin,
+        staleMin: room.staleMin ?? DEFAULTS.staleMin,
         trvs,
       };
       const missing = [resolved.sensor, ...trvs.map((t) => t.name)]
@@ -131,6 +137,40 @@ class TrvSetup {
       this.rooms[roomName] = resolved;
       this.bySensor[resolved.sensor] = roomName;
     }
+  }
+
+  // TRVs that normally use the remote sensor (only those are switched on fallback)
+  remoteTrvs(room) {
+    return room.trvs.filter((t) => t.settings.temperature_sensor_select === 'remote_temperature');
+  }
+
+  isStale(room) {
+    const seen = this.lastSeen[room.name];
+    return room.staleMin > 0 && (seen === undefined || Date.now() - seen > room.staleMin * 60 * 1000);
+  }
+
+  enterFallback(room) {
+    if (this.fallback[room.name]) return;
+    this.fallback[room.name] = true;
+    const trvs = this.remoteTrvs(room);
+    for (const trv of trvs) this.send(trv.name, { temperature_sensor_select: 'local_temperature' });
+    const seen = this.lastSeen[room.name];
+    const ago = seen === undefined ? 'never' : `${Math.round((Date.now() - seen) / 60000)} min ago`;
+    this.log('warning', `${room.name}: ${room.sensor} stale (last seen ${ago}) -> ${trvs.map((t) => t.name).join(', ')} use local temperature`);
+  }
+
+  leaveFallback(room, temp) {
+    if (!this.fallback[room.name]) return;
+    this.fallback[room.name] = false;
+    // Value first, so the TRV has a fresh reading when it switches back
+    this.forward(room, temp, 'sensor back');
+    const trvs = this.remoteTrvs(room);
+    for (const trv of trvs) this.send(trv.name, { temperature_sensor_select: 'remote_temperature' });
+    this.log('info', `${room.name}: ${room.sensor} back -> ${trvs.map((t) => t.name).join(', ')} use remote temperature`);
+  }
+
+  checkStale() {
+    for (const room of Object.values(this.rooms)) if (this.isStale(room)) this.enterFallback(room);
   }
 
   forward(room, temp, reason) {
@@ -152,24 +192,43 @@ class TrvSetup {
         }
       }
       // Initial sync from cached state, so TRVs are correct right after a restart
+      // (only if the cached value is still fresh - otherwise fall back right away)
       const dev = this.zigbee.resolveEntity(room.sensor);
+      const seen = dev?.zh?.lastSeen;
+      if (typeof seen === 'number') this.lastSeen[room.name] = seen;
       const t = dev ? this.state.get(dev)?.temperature : undefined;
-      if (typeof t === 'number') this.forward(room, t, 'startup');
+      if (this.isStale(room)) this.enterFallback(room);
+      else if (typeof t === 'number') this.forward(room, t, 'startup');
 
-      // Per-room heartbeat
+      // Per-room heartbeat (paused while the sensor is stale, so a dead sensor's
+      // last value isn't kept alive forever)
       if (room.heartbeatMin > 0) {
         this.timers.push(setInterval(() => {
           const last = this.lastSent[room.name];
-          if (last !== undefined) this.forward(room, last, 'heartbeat');
+          if (last !== undefined && !this.fallback[room.name]) this.forward(room, last, 'heartbeat');
         }, room.heartbeatMin * 60 * 1000));
       }
     }
+
+    this.timers.push(setInterval(() => this.checkStale(), 60 * 1000));
+
+    // Any message from the sensor counts as alive (also e.g. humidity-only
+    // reports when the temperature did not change)
+    this.eventBus.onLastSeenChanged(this, (data) => {
+      const roomName = this.bySensor[data.device?.name];
+      if (roomName) this.lastSeen[roomName] = Date.now();
+    });
 
     this.eventBus.onStateChange(this, (data) => {
       const roomName = this.bySensor[data.entity?.name];
       if (!roomName || !data.update || typeof data.update.temperature !== 'number') return;
       const room = this.rooms[roomName];
       const t = data.update.temperature;
+      this.lastSeen[roomName] = Date.now();
+      if (this.fallback[roomName]) {
+        this.leaveFallback(room, t);
+        return;
+      }
       const last = this.lastSent[roomName];
       // Compare against the last SENT value, not the last reading: slow drift
       // still triggers once it adds up to the threshold.
